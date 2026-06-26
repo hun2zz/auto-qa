@@ -1,10 +1,14 @@
 import { spawn } from 'node:child_process'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { delimiter, join, resolve as resolvePath } from 'node:path'
 import type { ProgressEvent, RunReport, TestResult, TestStatus } from '@shared/types'
 
 /**
  * 타겟 프로젝트에서 Playwright 를 실행하고 JSON 리포트를 RunReport 로 변환.
- * reporter=json 을 stdout 으로 받아 파싱(파일 경로 의존 제거).
+ *
+ * 타겟 프로젝트에 @playwright/test 가 없어도 동작하도록, auto-qa 가 자체 보유한
+ * playwright 를 쓰고 NODE_PATH 로 모듈 해석 경로를 잡아준다(타겟 프로젝트 미오염).
+ * 브라우저가 없으면 자동 설치 후 1회 재시도한다.
  */
 export async function runPlaywright(args: {
   projectPath: string
@@ -17,49 +21,104 @@ export async function runPlaywright(args: {
 }): Promise<RunReport> {
   const { projectPath, onProgress, signal, extraEnv, only } = args
   const configPath = join('.qa', 'playwright.config.ts')
+  const tool = toolPaths()
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...extraEnv,
+    FORCE_COLOR: '0',
+    // 타겟 프로젝트가 @playwright/test 를 못 찾을 때 auto-qa 의 것을 fallback 으로
+    NODE_PATH: tool.nodeModules + (process.env.NODE_PATH ? delimiter + process.env.NODE_PATH : '')
+  }
 
   onProgress({ phase: 'playwright', message: only ? `재실행: ${only}` : 'Playwright 실행 중…' })
 
+  const testArgs = ['test', '--config', configPath, '--reporter=json']
+  if (only) testArgs.push(only)
+
+  let res = await spawnPw(tool, testArgs, { projectPath, env, signal, onProgress })
+
+  // 브라우저 미설치 → 자동 설치 후 1회 재시도
+  if (needsBrowserInstall(res.stdout + res.stderr)) {
+    onProgress({ phase: 'playwright', message: 'Playwright 브라우저 설치 중… (최초 1회)' })
+    await spawnPw(tool, ['install', 'chromium'], { projectPath, env, signal, onProgress })
+    onProgress({ phase: 'playwright', message: '브라우저 설치 완료, 재실행…' })
+    res = await spawnPw(tool, testArgs, { projectPath, env, signal, onProgress })
+  }
+
+  if (res.spawnError) return fatal(`Playwright 실행 실패: ${res.spawnError}`)
+  const json = extractJson(res.stdout)
+  if (!json) return fatal(res.stderr.slice(-3000) || 'Playwright JSON 리포트를 파싱하지 못했습니다.')
+  try {
+    return toReport(json)
+  } catch (e) {
+    return fatal(`리포트 변환 실패: ${(e as Error).message}`)
+  }
+}
+
+interface ToolPaths {
+  cmd: string
+  prefix: string[]
+  nodeModules: string
+  shell: boolean
+}
+
+/** auto-qa 가 자체 보유한 playwright 바이너리 경로 (없으면 npx fallback) */
+function toolPaths(): ToolPaths {
+  // 번들된 main 은 out/main 에 위치 → ../.. 가 auto-qa 루트
+  const appRoot = resolvePath(import.meta.dirname, '..', '..')
+  const nodeModules = join(appRoot, 'node_modules')
+  const bin = join(nodeModules, '.bin', process.platform === 'win32' ? 'playwright.cmd' : 'playwright')
+  if (existsSync(bin)) {
+    return { cmd: bin, prefix: [], nodeModules, shell: process.platform === 'win32' }
+  }
+  // fallback: npx 로 즉석 설치
+  return { cmd: 'npx', prefix: ['--yes', 'playwright'], nodeModules, shell: process.platform === 'win32' }
+}
+
+interface PwResult {
+  stdout: string
+  stderr: string
+  spawnError?: string
+}
+
+function spawnPw(
+  tool: ToolPaths,
+  pwArgs: string[],
+  opts: {
+    projectPath: string
+    env: NodeJS.ProcessEnv
+    signal?: AbortSignal
+    onProgress: (e: ProgressEvent) => void
+  }
+): Promise<PwResult> {
   return new Promise((resolve) => {
-    const cliArgs = ['--yes', 'playwright', 'test', '--config', configPath, '--reporter=json']
-    if (only) cliArgs.push(only)
-    const child = spawn('npx', cliArgs, {
-      cwd: projectPath,
-      shell: process.platform === 'win32',
-      env: { ...process.env, ...extraEnv, FORCE_COLOR: '0' },
-      signal
+    const child = spawn(tool.cmd, [...tool.prefix, ...pwArgs], {
+      cwd: opts.projectPath,
+      shell: tool.shell,
+      env: opts.env,
+      signal: opts.signal
     })
-
     let stdout = ''
-    let stderrTail = ''
-
+    let stderr = ''
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', (d: string) => {
       stdout += d
     })
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (d: string) => {
-      stderrTail = (stderrTail + d).slice(-3000)
-      onProgress({ phase: 'playwright', message: '실행 중…', log: d.trimEnd() })
+      stderr = (stderr + d).slice(-4000)
+      opts.onProgress({ phase: 'playwright', message: '실행 중…', log: d.trimEnd() })
     })
-
-    child.on('error', (err) => {
-      resolve(fatal(`Playwright 실행 실패: ${err.message}`))
-    })
-
-    child.on('close', () => {
-      const json = extractJson(stdout)
-      if (!json) {
-        resolve(fatal(stderrTail || 'Playwright JSON 리포트를 파싱하지 못했습니다.'))
-        return
-      }
-      try {
-        resolve(toReport(json))
-      } catch (e) {
-        resolve(fatal(`리포트 변환 실패: ${(e as Error).message}`))
-      }
-    })
+    child.on('error', (err) => resolve({ stdout, stderr, spawnError: err.message }))
+    child.on('close', () => resolve({ stdout, stderr }))
   })
+}
+
+function needsBrowserInstall(output: string): boolean {
+  return /Executable doesn't exist|playwright install|Looks like Playwright was just installed/i.test(
+    output
+  )
 }
 
 function fatal(msg: string): RunReport {

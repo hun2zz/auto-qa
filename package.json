@@ -16,8 +16,9 @@
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/tsconfig": "^1.0.1",
     "@electron-toolkit/utils": "^4.0.0",
-    "@electron-toolkit/tsconfig": "^1.0.1"
+    "@playwright/test": "^1.61.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
