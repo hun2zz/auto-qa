@@ -214,8 +214,8 @@ export interface AutoQaApi {
     content: string
   ): Promise<RequirementFile>
 
-  /** [AI] 요구사항 + 코드구조 → Given/When/Then 체크리스트 생성 */
-  generateChecklist(projectPath: string, requirementName: string): Promise<Checklist>
+  /** [AI] 요구사항 → 모듈 분해 → 모듈별 Given/When/Then 체크리스트들 생성 */
+  generateChecklist(projectPath: string, requirementName: string): Promise<Checklist[]>
   listChecklists(projectPath: string): Promise<Checklist[]>
   saveChecklist(projectPath: string, id: string, markdown: string): Promise<void>
   approveChecklist(projectPath: string, id: string): Promise<Checklist>

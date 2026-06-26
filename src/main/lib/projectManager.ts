@@ -11,7 +11,7 @@ import {
   type RequirementFile
 } from '@shared/types'
 import { runClaude } from './claudeRunner'
-import { authSetupPrompt, checklistPrompt, testsPrompt, rulesHeader } from './prompts'
+import { authSetupPrompt, checklistPrompt, decomposePrompt, testsPrompt, rulesHeader } from './prompts'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 import { composeRules, ensureRules } from './rules'
 
@@ -59,7 +59,7 @@ async function ensureScaffold(path: string): Promise<void> {
   await fs.writeFile(join(qaDir(path), 'playwright.config.ts'), playwrightConfigTemplate(), 'utf8')
   const gi = join(qaDir(path), '.gitignore')
   if (!existsSync(gi)) {
-    await fs.writeFile(gi, ['reports/', 'test-results/', '.auth/', ''].join('\n'), 'utf8')
+    await fs.writeFile(gi, ['reports/', 'test-results/', '.auth/', '.work/', ''].join('\n'), 'utf8')
   }
 }
 
@@ -231,27 +231,140 @@ async function readChecklist(projectPath: string, id: string): Promise<Checklist
   return parseChecklist(id, raw)
 }
 
-/** [AI] 요구사항 → 체크리스트 생성 */
+interface Module {
+  id: string
+  title: string
+  summary: string
+}
+
+/**
+ * [AI] 요구사항 → 체크리스트 생성.
+ * 거대 요구사항은 먼저 '모듈'로 분해한 뒤 모듈마다 체크리스트를 만든다(빠짐없이 커버).
+ * 분해가 1개 이하면 단일 체크리스트로 폴백한다.
+ */
 export async function generateChecklist(
   projectPath: string,
   requirementName: string,
   onProgress: (e: ProgressEvent) => void
-): Promise<Checklist> {
-  const id = slug(requirementName)
-  const outPath = join(checklistDir(projectPath), `${id}.md`)
+): Promise<Checklist[]> {
+  const baseId = slug(requirementName)
   const requirementPath = join(reqDir(projectPath), requirementName)
   const rules = rulesHeader(await composeRules(projectPath, 'checklist'))
 
+  // 1) 분해
+  onProgress({ phase: 'checklist', message: '요구사항을 테스트 모듈로 분해 중…' })
+  const modules = await decompose(projectPath, requirementPath, onProgress)
+
+  // 폴백: 분해 실패/단일 → 기존처럼 체크리스트 1개
+  if (modules.length <= 1) {
+    const id = modules[0] ? `${baseId}__${slug(modules[0].id)}` : baseId
+    const c = await genOneChecklist(projectPath, {
+      checklistId: id,
+      requirementName,
+      requirementPath,
+      rules,
+      module: modules[0],
+      onProgress
+    })
+    return [c]
+  }
+
+  // 2) 모듈마다 체크리스트
+  onProgress({ phase: 'checklist', message: `${modules.length}개 모듈 → 체크리스트 생성 시작` })
+  const out: Checklist[] = []
+  for (let i = 0; i < modules.length; i++) {
+    const m = modules[i]
+    onProgress({
+      phase: 'checklist',
+      message: `[${i + 1}/${modules.length}] ${m.title}`,
+      fraction: (i + 1) / modules.length
+    })
+    try {
+      out.push(
+        await genOneChecklist(projectPath, {
+          checklistId: `${baseId}__${slug(m.id)}`,
+          requirementName,
+          requirementPath,
+          rules,
+          module: m,
+          onProgress
+        })
+      )
+    } catch (e) {
+      onProgress({ phase: 'checklist', message: `모듈 실패: ${m.title} — ${(e as Error).message}` })
+    }
+  }
+  if (out.length === 0) throw new Error('체크리스트가 하나도 생성되지 않았습니다.')
+  return out
+}
+
+/** 요구사항을 모듈 리스트로 분해 (실패 시 빈 배열) */
+async function decompose(
+  projectPath: string,
+  requirementPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<Module[]> {
+  const workDir = join(qaDir(projectPath), '.work')
+  await fs.mkdir(workDir, { recursive: true })
+  const outPath = join(workDir, 'modules.json')
+  await fs.rm(outPath).catch(() => {})
+
   const res = await runClaude({
     projectPath,
-    prompt: rules + checklistPrompt({ requirementName, requirementPath, checklistId: id, outPath }),
+    prompt: decomposePrompt({ requirementPath, outPath }),
     allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
     phase: 'checklist',
     onProgress
   })
+  if (!res.ok || !existsSync(outPath)) return []
+  try {
+    const raw = JSON.parse(await fs.readFile(outPath, 'utf8'))
+    if (!Array.isArray(raw)) return []
+    const seen = new Set<string>()
+    const mods: Module[] = []
+    for (const m of raw) {
+      const id = slug(String(m?.id || m?.title || ''))
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      mods.push({ id, title: String(m?.title || id), summary: String(m?.summary || '') })
+      if (mods.length >= 30) break
+    }
+    return mods
+  } catch {
+    return []
+  }
+}
+
+async function genOneChecklist(
+  projectPath: string,
+  args: {
+    checklistId: string
+    requirementName: string
+    requirementPath: string
+    rules: string
+    module?: Module
+    onProgress: (e: ProgressEvent) => void
+  }
+): Promise<Checklist> {
+  const outPath = join(checklistDir(projectPath), `${args.checklistId}.md`)
+  const res = await runClaude({
+    projectPath,
+    prompt:
+      args.rules +
+      checklistPrompt({
+        requirementName: args.requirementName,
+        requirementPath: args.requirementPath,
+        checklistId: args.checklistId,
+        outPath,
+        module: args.module ? { title: args.module.title, summary: args.module.summary } : undefined
+      }),
+    allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+    phase: 'checklist',
+    onProgress: args.onProgress
+  })
   if (!res.ok) throw new Error(res.error || '체크리스트 생성 실패')
   if (!existsSync(outPath)) throw new Error('체크리스트 파일이 생성되지 않았습니다.')
-  return readChecklist(projectPath, id)
+  return readChecklist(projectPath, args.checklistId)
 }
 
 export async function saveChecklist(

@@ -16,14 +16,37 @@ ${body}
 }
 
 
+export function decomposePrompt(args: { requirementPath: string; outPath: string }): string {
+  return `너는 시니어 QA 리드다. 거대한 요구사항을 '독립적으로 테스트 가능한 기능 모듈'로 빠짐없이 분해한다.
+
+# 작업
+1. 요구사항 문서를 읽는다(Read): ${args.requirementPath} (PDF/이미지면 내용을 보고 파악)
+2. 프로젝트 코드를 탐색한다(Read/Grep/Glob): 라우트, 페이지, 관리자 화면, API 를 파악해 '실제 기능 단위'를 확인한다.
+3. 요구사항을 테스트 모듈로 '빠짐없이' 분해한다. 압축·샘플링 금지. 잘게 쪼갤수록 좋다(20~40개도 무방).
+   - 게시판 종류(수행사례/언론보도/마중소식/뉴스레터/의뢰인후기/법률칼럼/유튜브/자료실 등)는 '각각' 별도 모듈
+   - "관리자에서 설정 변경 → 유저 페이지에 반영"되는 플로우는 '각각' 별도 모듈로 (노출여부 토글, 대표지정, 순서변경, 메뉴구성 등)
+   - 통합검색, 상담/취재 폼, 구성원 목록/상세, 업무분야/FAQ, 인재채용, 오시는길(지도), SEO(메타/OG/sitemap/robots/canonical/schema), 301 리다이렉트, 공통 상세페이지 등 각각
+   - 공통 상세페이지 기능(목차/이전다음/공유/연관콘텐츠 등)도 별도 모듈
+
+# 출력 (반드시 이 경로에 JSON 배열을 Write)
+경로: ${args.outPath}
+형식: [{ "id": "kebab-case-id", "title": "한글 모듈명", "summary": "이 모듈에서 검증할 핵심 기능 1~3줄" }, ...]
+- id 는 영문 kebab-case 로 고유하게. 30개를 넘기면 가장 중요한 30개로.
+- 파일만 쓰고 result 에는 모듈 개수만 요약.`
+}
+
 export function checklistPrompt(args: {
   requirementName: string
   requirementPath: string
   checklistId: string
   outPath: string
+  module?: { title: string; summary: string }
 }): string {
+  const focus = args.module
+    ? `\n# 집중 모듈 (이 체크리스트는 아래 모듈만 다룬다)\n제목: ${args.module.title}\n범위: ${args.module.summary}\n이 모듈의 모든 핵심 시나리오 + 주요 엣지/에러 케이스를 빠짐없이 작성한다(보통 5~20개). 다른 모듈은 다루지 않는다.\n`
+    : ''
   return `너는 시니어 QA 자동화 엔지니어다. 이 프로젝트의 실제 코드를 근거로 합격기준(acceptance criteria) 체크리스트를 작성한다.
-
+${focus}
 # 작업
 1. 요구사항 문서를 읽는다(Read): ${args.requirementPath}
    - 마크다운/텍스트면 그대로, PDF면 내용을, 이미지(가이드 화면 캡처)면 화면을 보고 요구사항을 파악한다.
