@@ -95,7 +95,7 @@ interface AppState {
 
   loadAuthStatus: () => Promise<void>
   setAuthSecret: (password: string) => Promise<void>
-  generateAuthSetup: () => Promise<void>
+  generateAuthSetup: (config?: QaConfig) => Promise<void>
   healAndRerun: () => Promise<void>
 }
 
@@ -389,10 +389,15 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    generateAuthSetup: async () => {
+    generateAuthSetup: async (config) => {
       const { project } = get()
       if (!project) return
       await withBusy('generateAuthSetup', async () => {
+        // 폼 값이 아직 미저장일 수 있으므로 셋업 생성 전에 config 를 먼저 반영
+        if (config) {
+          await window.api.saveConfig(project.path, config)
+          set({ config })
+        }
         const authStatus = await window.api.generateAuthSetup(project.path)
         set({ authStatus })
         get().pushToast('success', '로그인 셋업이 생성되었습니다')

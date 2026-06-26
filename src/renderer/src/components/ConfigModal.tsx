@@ -63,14 +63,18 @@ export function ConfigModal(): JSX.Element | null {
     }))
   }
 
-  function handleSave(): void {
+  function buildConfig(): QaConfig {
     const next: QaConfig = { ...form }
     if (!authEnabled) {
       delete next.auth
     } else {
       next.auth = { loginUrl: '', user: '', ...next.auth, enabled: true }
     }
-    void saveConfig(next)
+    return next
+  }
+
+  function handleSave(): void {
+    void saveConfig(buildConfig())
   }
 
   function handleSaveSecret(): void {
@@ -225,7 +229,7 @@ export function ConfigModal(): JSX.Element | null {
                           ? undefined
                           : '로그인 URL · 아이디 · 비밀번호를 먼저 입력/저장하세요'
                       }
-                      onClick={() => void generateAuthSetup()}
+                      onClick={() => void generateAuthSetup(buildConfig())}
                     >
                       로그인 셋업 생성 (AI)
                     </Button>
