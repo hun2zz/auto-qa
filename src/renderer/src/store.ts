@@ -8,7 +8,8 @@ import type {
   ProgressEvent,
   ProgressPhase,
   AuthStatus,
-  HealResult
+  HealResult,
+  RuleFile
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -45,7 +46,7 @@ interface AppState {
   lastReport: RunReport | null
   authStatus: AuthStatus | null
   lastHeal: HealResult | null
-  rules: string
+  rules: RuleFile[]
 
   // ── UI 상태 ────────────────────────────────────────────────────
   activeStep: StepId
@@ -75,7 +76,7 @@ interface AppState {
   loadConfig: () => Promise<void>
   saveConfig: (config: QaConfig) => Promise<void>
   loadRules: () => Promise<void>
-  saveRules: (content: string) => Promise<void>
+  saveRule: (name: string, content: string) => Promise<void>
 
   uploadRequirement: () => Promise<void>
   addRequirementText: (title: string, content: string) => Promise<boolean>
@@ -132,7 +133,7 @@ export const useStore = create<AppState>((set, get) => {
     lastReport: null,
     authStatus: null,
     lastHeal: null,
-    rules: '',
+    rules: [],
 
     activeStep: 'requirements',
     configOpen: false,
@@ -232,17 +233,17 @@ export const useStore = create<AppState>((set, get) => {
     loadRules: async () => {
       const { project } = get()
       if (!project) return
-      const rules = await window.api.getRules(project.path).catch(() => '')
+      const rules = await window.api.listRules(project.path).catch(() => [])
       set({ rules })
     },
 
-    saveRules: async (content) => {
+    saveRule: async (name, content) => {
       const { project } = get()
       if (!project) return
-      await withBusy('saveRules', async () => {
-        await window.api.saveRules(project.path, content)
-        set({ rules: content })
-        get().pushToast('success', 'QA 규칙(RULES.md)이 저장되었습니다')
+      await withBusy('saveRule', async () => {
+        await window.api.saveRule(project.path, name, content)
+        await get().loadRules()
+        get().pushToast('success', `규칙 '${name}' 저장됨`)
       })
     },
 

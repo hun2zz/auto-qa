@@ -11,8 +11,9 @@ import {
   type RequirementFile
 } from '@shared/types'
 import { runClaude } from './claudeRunner'
-import { authSetupPrompt, checklistPrompt, testsPrompt, rulesHeader, DEFAULT_RULES } from './prompts'
+import { authSetupPrompt, checklistPrompt, testsPrompt, rulesHeader } from './prompts'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
+import { composeRules, ensureRules } from './rules'
 
 // ----------------------------------------------------------------------------
 // .qa 폴더 레이아웃
@@ -23,7 +24,6 @@ const reqDir = (p: string): string => join(p, QA, 'requirements')
 const checklistDir = (p: string): string => join(p, QA, 'checklists')
 const testsDir = (p: string): string => join(p, QA, 'tests')
 const configPath = (p: string): string => join(p, QA, 'config.json')
-const rulesPath = (p: string): string => join(p, QA, 'RULES.md')
 const reportDir = (p: string): string => join(p, QA, 'reports')
 const lastReportPath = (p: string): string => join(p, QA, 'reports', 'last.json')
 
@@ -54,9 +54,7 @@ async function ensureScaffold(path: string): Promise<void> {
   if (!existsSync(configPath(path))) {
     await fs.writeFile(configPath(path), JSON.stringify(DEFAULT_QA_CONFIG, null, 2), 'utf8')
   }
-  if (!existsSync(rulesPath(path))) {
-    await fs.writeFile(rulesPath(path), DEFAULT_RULES, 'utf8')
-  }
+  await ensureRules(path)
   // playwright.config 은 툴이 생성/관리하므로 항상 최신 템플릿으로 갱신
   await fs.writeFile(join(qaDir(path), 'playwright.config.ts'), playwrightConfigTemplate(), 'utf8')
   const gi = join(qaDir(path), '.gitignore')
@@ -114,22 +112,6 @@ export async function getConfig(projectPath: string): Promise<QaConfig> {
 
 export async function saveConfig(projectPath: string, config: QaConfig): Promise<void> {
   await fs.writeFile(configPath(projectPath), JSON.stringify(config, null, 2), 'utf8')
-}
-
-// ----------------------------------------------------------------------------
-// QA 규칙 (.qa/RULES.md) — 모든 AI 단계가 우선 적용하는 가드레일
-// ----------------------------------------------------------------------------
-
-export async function getRules(projectPath: string): Promise<string> {
-  try {
-    return await fs.readFile(rulesPath(projectPath), 'utf8')
-  } catch {
-    return DEFAULT_RULES
-  }
-}
-
-export async function saveRules(projectPath: string, content: string): Promise<void> {
-  await fs.writeFile(rulesPath(projectPath), content, 'utf8')
 }
 
 // ----------------------------------------------------------------------------
@@ -248,7 +230,7 @@ export async function generateChecklist(
   const id = slug(requirementName)
   const outPath = join(checklistDir(projectPath), `${id}.md`)
   const requirementPath = join(reqDir(projectPath), requirementName)
-  const rules = rulesHeader(await getRules(projectPath))
+  const rules = rulesHeader(await composeRules(projectPath, 'checklist'))
 
   const res = await runClaude({
     projectPath,
@@ -296,7 +278,7 @@ export async function generateTests(
   const specRel = `tests/${checklistId}.spec.ts`
   const specOutPath = join(qaDir(projectPath), specRel)
   const checklistPath = join(checklistDir(projectPath), `${checklistId}.md`)
-  const rules = rulesHeader(await getRules(projectPath))
+  const rules = rulesHeader(await composeRules(projectPath, 'tests'))
 
   const res = await runClaude({
     projectPath,
@@ -330,7 +312,7 @@ export async function generateAuthSetup(
   if (!config.auth?.enabled) throw new Error('설정에서 로그인(auth)을 먼저 켜고 로그인 URL/아이디를 입력하세요.')
 
   const setupOutPath = join(qaDir(projectPath), 'tests', 'auth.setup.ts')
-  const rules = rulesHeader(await getRules(projectPath))
+  const rules = rulesHeader(await composeRules(projectPath, 'auth'))
   const res = await runClaude({
     projectPath,
     prompt:

@@ -19,13 +19,14 @@ export function ConfigModal(): JSX.Element | null {
   const generatingSetup = useStore((s) => !!s.busyKeys['generateAuthSetup'])
 
   const rules = useStore((s) => s.rules)
-  const saveRules = useStore((s) => s.saveRules)
-  const savingRules = useStore((s) => !!s.busyKeys['saveRules'])
+  const saveRule = useStore((s) => s.saveRule)
+  const savingRule = useStore((s) => !!s.busyKeys['saveRule'])
 
   const [form, setForm] = useState<QaConfig>(config ?? DEFAULT_QA_CONFIG)
   const [authEnabled, setAuthEnabled] = useState(!!config?.auth?.enabled)
   const [password, setPassword] = useState('')
-  const [rulesDraft, setRulesDraft] = useState('')
+  const [selectedRule, setSelectedRule] = useState('')
+  const [ruleDraft, setRuleDraft] = useState('')
 
   // 모달이 열릴 때 현재 설정으로 초기화
   useEffect(() => {
@@ -33,9 +34,21 @@ export function ConfigModal(): JSX.Element | null {
       setForm(config ?? DEFAULT_QA_CONFIG)
       setAuthEnabled(!!config?.auth?.enabled)
       setPassword('')
-      setRulesDraft(rules)
     }
-  }, [open, config, rules])
+  }, [open, config])
+
+  // 규칙 목록이 로드되면 첫 파일 선택
+  useEffect(() => {
+    if (open && rules.length > 0 && !rules.some((r) => r.name === selectedRule)) {
+      setSelectedRule(rules[0].name)
+    }
+  }, [open, rules, selectedRule])
+
+  // 선택된 규칙 파일이 바뀌면 draft 동기화
+  useEffect(() => {
+    const cur = rules.find((r) => r.name === selectedRule)
+    setRuleDraft(cur?.content ?? '')
+  }, [selectedRule, rules])
 
   if (!open) return null
 
@@ -66,6 +79,7 @@ export function ConfigModal(): JSX.Element | null {
     void setAuthSecret(pw).then(() => setPassword(''))
   }
 
+  const currentRuleContent = rules.find((r) => r.name === selectedRule)?.content ?? ''
   const loginUrl = form.auth?.loginUrl ?? ''
   const user = form.auth?.user ?? ''
   const hasSecret = !!authStatus?.hasSecret
@@ -225,33 +239,60 @@ export function ConfigModal(): JSX.Element | null {
             )}
           </div>
 
-          {/* QA 규칙 (RULES.md) — 모든 AI 단계가 우선 준수 */}
+          {/* QA 규칙 (.qa/rules/*) — 단계별로 쪼갠 가드레일 */}
           <div className="rounded-xl border border-border bg-surface-2/40 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="flex items-center gap-1.5 text-sm font-medium text-text">
                   <SparkleIcon width={14} height={14} className="text-brand-soft" />
-                  QA 규칙 (RULES.md)
+                  QA 규칙 (단계별)
                 </p>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
-                  AI가 체크리스트·테스트를 생성/수정할 때 항상 우선 준수하는 가드레일입니다.
+                  각 AI 단계에 해당하는 규칙만 주입됩니다. scope 가 적용 단계를 결정합니다.
                 </p>
               </div>
               <Button
                 variant="secondary"
-                loading={savingRules}
+                loading={savingRule}
                 loadingText="저장 중…"
-                disabled={rulesDraft === rules}
-                onClick={() => void saveRules(rulesDraft)}
+                disabled={!selectedRule || ruleDraft === currentRuleContent}
+                onClick={() => selectedRule && void saveRule(selectedRule, ruleDraft)}
               >
                 규칙 저장
               </Button>
             </div>
+
+            {/* 파일 탭 */}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {rules.map((r) => {
+                const active = r.name === selectedRule
+                return (
+                  <button
+                    key={r.name}
+                    onClick={() => setSelectedRule(r.name)}
+                    className={[
+                      'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] transition-colors',
+                      active
+                        ? 'border-brand/60 bg-brand/15 text-text'
+                        : 'border-border bg-bg/40 text-muted hover:text-text'
+                    ].join(' ')}
+                    title={`적용 단계: ${r.scope}`}
+                  >
+                    <span className="font-mono">{r.name}</span>
+                    <span className="rounded bg-surface-2 px-1 text-[10px] text-brand-soft">
+                      {r.scope}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
             <textarea
-              value={rulesDraft}
-              onChange={(e) => setRulesDraft(e.target.value)}
+              value={ruleDraft}
+              onChange={(e) => setRuleDraft(e.target.value)}
               spellCheck={false}
               rows={10}
+              placeholder={rules.length === 0 ? '프로젝트를 연결하면 규칙이 생성됩니다.' : ''}
               className="mt-3 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2.5 font-mono text-[12px] leading-relaxed text-text outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/20"
             />
           </div>

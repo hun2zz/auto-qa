@@ -50,6 +50,16 @@ export interface RequirementFile {
   preview: string
 }
 
+/** 단계별로 쪼갠 가드레일 규칙 파일 (.qa/rules/*.md) */
+export interface RuleFile {
+  /** 파일명 (예: 20-tests.md) */
+  name: string
+  /** 적용 단계 (예: "all" 또는 "tests,healing") */
+  scope: string
+  /** 전체 내용 (frontmatter 포함, 편집용) */
+  content: string
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -128,8 +138,8 @@ export const IPC = {
   openProject: 'project:open',
   getConfig: 'project:getConfig',
   saveConfig: 'project:saveConfig',
-  getRules: 'project:getRules',
-  saveRules: 'project:saveRules',
+  listRules: 'rules:list',
+  saveRule: 'rules:save',
   listRequirements: 'req:list',
   uploadRequirement: 'req:upload',
   addRequirementText: 'req:addText',
@@ -181,9 +191,9 @@ export interface AutoQaApi {
   openProject(): Promise<ProjectInfo | null>
   getConfig(projectPath: string): Promise<QaConfig>
   saveConfig(projectPath: string, config: QaConfig): Promise<void>
-  /** .qa/RULES.md — 모든 AI 단계가 준수하는 가드레일 문서 */
-  getRules(projectPath: string): Promise<string>
-  saveRules(projectPath: string, content: string): Promise<void>
+  /** .qa/rules/*.md — 단계별로 쪼갠 가드레일 규칙 (무신사식). 해당 phase 규칙만 AI 에 주입됨 */
+  listRules(projectPath: string): Promise<RuleFile[]>
+  saveRule(projectPath: string, name: string, content: string): Promise<void>
 
   listRequirements(projectPath: string): Promise<RequirementFile[]>
   /** 파일 선택 → .qa/requirements/ 로 복사 (md/txt/pdf/이미지 등) */
