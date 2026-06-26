@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import type { HealResult, ProgressEvent, RunReport, TestResult } from '@shared/types'
-import { getConfig, lastReportPath, qaDir, testsDir } from './projectManager'
+import { getConfig, lastReportPath, qaDir, testsDir, writePlaywrightConfig } from './projectManager'
 import { startDevServer, type DevServerHandle } from './devServer'
 import { runPlaywright } from './playwrightRunner'
 import { runClaude } from './claudeRunner'
@@ -18,7 +18,7 @@ export async function runTests(
   let server: DevServerHandle | null = null
   try {
     server = await bootDevServer(projectPath, onProgress)
-    const extraEnv = await authEnv(projectPath)
+    const extraEnv = await qaEnv(projectPath)
     const stamped = await runAndStamp(projectPath, { extraEnv, onProgress })
     await persist(projectPath, stamped)
     announce(stamped, onProgress)
@@ -45,7 +45,7 @@ export async function healAndRerun(
   const notes: string[] = []
   try {
     server = await bootDevServer(projectPath, onProgress)
-    const extraEnv = await authEnv(projectPath)
+    const extraEnv = await qaEnv(projectPath)
 
     // 1차 실행
     let report = await runAndStamp(projectPath, { extraEnv, onProgress })
@@ -126,12 +126,24 @@ async function runAndStamp(
   projectPath: string,
   opts: { extraEnv: Record<string, string>; onProgress: (e: ProgressEvent) => void }
 ): Promise<RunReport> {
+  // 실행 전 config 를 최신 템플릿으로 보장 (구버전/손상 방지)
+  await writePlaywrightConfig(projectPath)
   const report = await runPlaywright({
     projectPath,
     onProgress: opts.onProgress,
     extraEnv: opts.extraEnv
   })
   return { ...report, startedAt: report.startedAt || new Date().toISOString() }
+}
+
+/** playwright 실행에 주입할 QA_* 환경변수 (config + auth) */
+async function qaEnv(projectPath: string): Promise<Record<string, string>> {
+  const config = await getConfig(projectPath)
+  const env = await authEnv(projectPath)
+  env.QA_BASE_URL = config.baseURL
+  env.QA_AUTH_ENABLED = config.auth?.enabled ? '1' : '0'
+  env.QA_MAX_FAILURES = String(config.maxFailures ?? 0)
+  return env
 }
 
 function groupFailingFiles(results: TestResult[]): Map<string, TestResult[]> {

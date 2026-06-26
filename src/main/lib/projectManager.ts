@@ -64,22 +64,23 @@ async function ensureScaffold(path: string): Promise<void> {
 }
 
 function playwrightConfigTemplate(): string {
+  // 설정값은 실행 시 환경변수로 주입한다(QA_*). 파일/ import.meta 를 쓰지 않아
+  // 타겟 프로젝트가 CommonJS 든 ESM 이든 동일하게 동작한다.
   return `import { defineConfig } from '@playwright/test'
-import { readFileSync } from 'node:fs'
 
-// auto-qa 가 생성/관리. 설정은 .qa/config.json 에서 읽는다.
-const cfg = JSON.parse(readFileSync(new URL('./config.json', import.meta.url), 'utf8'))
-const authEnabled = !!(cfg.auth && cfg.auth.enabled)
+// auto-qa 가 생성/관리. 값은 실행 시 환경변수로 주입됨.
+const authEnabled = process.env.QA_AUTH_ENABLED === '1'
+const maxFailures = Number(process.env.QA_MAX_FAILURES || '0')
 const STORAGE = '.qa/.auth/state.json'
 
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
   // fail-fast: 실패 N개 발생 시 즉시 중단 (0/미설정이면 끝까지)
-  maxFailures: cfg.maxFailures && cfg.maxFailures > 0 ? cfg.maxFailures : undefined,
-  reporter: [['json', { outputFile: './reports/last.json' }], ['list']],
+  maxFailures: maxFailures > 0 ? maxFailures : undefined,
+  reporter: [['list']],
   use: {
-    baseURL: cfg.baseURL,
+    baseURL: process.env.QA_BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure'
   },
@@ -95,6 +96,15 @@ export default defineConfig({
   ]
 })
 `
+}
+
+/** playwright.config 을 최신 템플릿으로 다시 쓴다 (실행 전 항상 보장) */
+export async function writePlaywrightConfig(projectPath: string): Promise<void> {
+  await fs.writeFile(
+    join(qaDir(projectPath), 'playwright.config.ts'),
+    playwrightConfigTemplate(),
+    'utf8'
+  )
 }
 
 // ----------------------------------------------------------------------------
