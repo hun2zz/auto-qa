@@ -10,23 +10,25 @@ export async function runPlaywright(args: {
   projectPath: string
   onProgress: (e: ProgressEvent) => void
   signal?: AbortSignal
+  /** auth 등 추가 환경변수 (비밀번호 주입) */
+  extraEnv?: Record<string, string>
+  /** 특정 spec 파일만 재실행 (self-healing 용). .qa 기준 또는 파일명 */
+  only?: string
 }): Promise<RunReport> {
-  const { projectPath, onProgress, signal } = args
+  const { projectPath, onProgress, signal, extraEnv, only } = args
   const configPath = join('.qa', 'playwright.config.ts')
 
-  onProgress({ phase: 'playwright', message: 'Playwright 실행 중…' })
+  onProgress({ phase: 'playwright', message: only ? `재실행: ${only}` : 'Playwright 실행 중…' })
 
   return new Promise((resolve) => {
-    const child = spawn(
-      'npx',
-      ['--yes', 'playwright', 'test', '--config', configPath, '--reporter=json'],
-      {
-        cwd: projectPath,
-        shell: process.platform === 'win32',
-        env: { ...process.env, FORCE_COLOR: '0' },
-        signal
-      }
-    )
+    const cliArgs = ['--yes', 'playwright', 'test', '--config', configPath, '--reporter=json']
+    if (only) cliArgs.push(only)
+    const child = spawn('npx', cliArgs, {
+      cwd: projectPath,
+      shell: process.platform === 'win32',
+      env: { ...process.env, ...extraEnv, FORCE_COLOR: '0' },
+      signal
+    })
 
     let stdout = ''
     let stderrTail = ''
@@ -93,13 +95,15 @@ interface PwSpec {
   tests?: Array<{ results?: Array<{ status?: string; duration?: number; error?: { message?: string } }> }>
 }
 interface PwSuite {
+  file?: string
   specs?: PwSpec[]
   suites?: PwSuite[]
 }
 
 function toReport(json: Record<string, unknown>): RunReport {
   const results: TestResult[] = []
-  const walk = (suite: PwSuite): void => {
+  const walk = (suite: PwSuite, file?: string): void => {
+    const f = suite.file ?? file
     for (const spec of suite.specs ?? []) {
       const r = spec.tests?.[0]?.results?.[0]
       const status = normalizeStatus(r?.status)
@@ -107,10 +111,11 @@ function toReport(json: Record<string, unknown>): RunReport {
         title: spec.title,
         status,
         durationMs: r?.duration ?? 0,
-        error: r?.error?.message
+        error: r?.error?.message,
+        file: f
       })
     }
-    for (const child of suite.suites ?? []) walk(child)
+    for (const child of suite.suites ?? []) walk(child, f)
   }
   for (const s of (json.suites as PwSuite[]) ?? []) walk(s)
 

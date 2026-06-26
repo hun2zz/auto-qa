@@ -3,7 +3,7 @@ import type { QaConfig } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
-import { CloseIcon, GearIcon } from './icons'
+import { CloseIcon, GearIcon, SparkleIcon, CheckIcon, AlertIcon } from './icons'
 
 export function ConfigModal(): JSX.Element | null {
   const open = useStore((s) => s.configOpen)
@@ -12,14 +12,22 @@ export function ConfigModal(): JSX.Element | null {
   const saveConfig = useStore((s) => s.saveConfig)
   const saving = useStore((s) => !!s.busyKeys['saveConfig'])
 
+  const authStatus = useStore((s) => s.authStatus)
+  const setAuthSecret = useStore((s) => s.setAuthSecret)
+  const generateAuthSetup = useStore((s) => s.generateAuthSetup)
+  const savingSecret = useStore((s) => !!s.busyKeys['setAuthSecret'])
+  const generatingSetup = useStore((s) => !!s.busyKeys['generateAuthSetup'])
+
   const [form, setForm] = useState<QaConfig>(config ?? DEFAULT_QA_CONFIG)
-  const [authEnabled, setAuthEnabled] = useState(!!config?.auth)
+  const [authEnabled, setAuthEnabled] = useState(!!config?.auth?.enabled)
+  const [password, setPassword] = useState('')
 
   // 모달이 열릴 때 현재 설정으로 초기화
   useEffect(() => {
     if (open) {
       setForm(config ?? DEFAULT_QA_CONFIG)
-      setAuthEnabled(!!config?.auth)
+      setAuthEnabled(!!config?.auth?.enabled)
+      setPassword('')
     }
   }, [open, config])
 
@@ -32,7 +40,7 @@ export function ConfigModal(): JSX.Element | null {
   function updateAuth(key: keyof NonNullable<QaConfig['auth']>, value: string): void {
     setForm((f) => ({
       ...f,
-      auth: { loginUrl: '', user: '', passEnv: '', ...f.auth, [key]: value }
+      auth: { enabled: true, loginUrl: '', user: '', ...f.auth, [key]: value }
     }))
   }
 
@@ -40,11 +48,25 @@ export function ConfigModal(): JSX.Element | null {
     const next: QaConfig = { ...form }
     if (!authEnabled) {
       delete next.auth
-    } else if (!next.auth) {
-      next.auth = { loginUrl: '', user: '', passEnv: '' }
+    } else {
+      next.auth = { loginUrl: '', user: '', ...next.auth, enabled: true }
     }
     void saveConfig(next)
   }
+
+  function handleSaveSecret(): void {
+    const pw = password.trim()
+    if (!pw) return
+    void setAuthSecret(pw).then(() => setPassword(''))
+  }
+
+  const loginUrl = form.auth?.loginUrl ?? ''
+  const user = form.auth?.user ?? ''
+  const hasSecret = !!authStatus?.hasSecret
+  const hasSetupSpec = !!authStatus?.hasSetupSpec
+  const encryptionUnavailable = authStatus?.encryptionAvailable === false
+  const canGenerateSetup =
+    authEnabled && loginUrl.trim() !== '' && user.trim() !== '' && hasSecret
 
   return (
     <div
@@ -86,20 +108,30 @@ export function ConfigModal(): JSX.Element | null {
               <Input value={form.baseURL} onChange={(v) => update('baseURL', v)} mono />
             </Field>
           </div>
-          <Field label="준비 대기 시간 (ms)" hint="서버 기동 최대 대기 시간">
-            <Input
-              type="number"
-              value={String(form.readyTimeoutMs)}
-              onChange={(v) => update('readyTimeoutMs', Number(v) || 0)}
-              mono
-            />
-          </Field>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="준비 대기 시간 (ms)" hint="서버 기동 최대 대기 시간">
+              <Input
+                type="number"
+                value={String(form.readyTimeoutMs)}
+                onChange={(v) => update('readyTimeoutMs', Number(v) || 0)}
+                mono
+              />
+            </Field>
+            <Field label="실패 N개 시 중단" hint="0이면 끝까지 실행">
+              <Input
+                type="number"
+                value={String(form.maxFailures ?? 0)}
+                onChange={(v) => update('maxFailures', Number(v) || 0)}
+                mono
+              />
+            </Field>
+          </div>
 
-          {/* 인증 (선택) */}
+          {/* 로그인 (선택) */}
           <div className="rounded-xl border border-border bg-surface-2/40 p-4">
             <label className="flex cursor-pointer items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-text">로그인 시드 (선택)</p>
+                <p className="text-sm font-medium text-text">로그인 (선택)</p>
                 <p className="text-[11px] text-muted">테스트 전 자동 로그인이 필요한 경우</p>
               </div>
               <Toggle checked={authEnabled} onChange={setAuthEnabled} />
@@ -107,27 +139,81 @@ export function ConfigModal(): JSX.Element | null {
 
             {authEnabled && (
               <div className="mt-4 space-y-4 border-t border-border pt-4">
+                {encryptionUnavailable && (
+                  <div className="flex items-start gap-2.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2.5">
+                    <AlertIcon className="mt-0.5 shrink-0 text-warn" width={15} height={15} />
+                    <p className="text-[11.5px] leading-relaxed text-warn">
+                      이 머신에서는 안전한 비밀번호 암호화 저장을 사용할 수 없습니다. 로그인 셋업이
+                      정상 동작하지 않을 수 있습니다.
+                    </p>
+                  </div>
+                )}
+
                 <Field label="로그인 URL">
-                  <Input
-                    value={form.auth?.loginUrl ?? ''}
-                    onChange={(v) => updateAuth('loginUrl', v)}
-                    mono
-                  />
+                  <Input value={loginUrl} onChange={(v) => updateAuth('loginUrl', v)} mono />
                 </Field>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field label="사용자">
-                    <Input
-                      value={form.auth?.user ?? ''}
-                      onChange={(v) => updateAuth('user', v)}
-                    />
-                  </Field>
-                  <Field label="비밀번호 환경변수명" hint="예: QA_PASSWORD">
-                    <Input
-                      value={form.auth?.passEnv ?? ''}
-                      onChange={(v) => updateAuth('passEnv', v)}
-                      mono
-                    />
-                  </Field>
+                <Field label="아이디 / 이메일">
+                  <Input value={user} onChange={(v) => updateAuth('user', v)} />
+                </Field>
+
+                <Field label="비밀번호">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Input type="password" value={password} onChange={setPassword} />
+                    </div>
+                    <Button
+                      variant="secondary"
+                      loading={savingSecret}
+                      loadingText="저장 중…"
+                      disabled={password.trim() === ''}
+                      onClick={handleSaveSecret}
+                    >
+                      비밀번호 저장
+                    </Button>
+                  </div>
+                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted">
+                    {hasSecret ? (
+                      <span className="inline-flex items-center gap-1 text-ok">
+                        <CheckIcon width={12} height={12} /> 저장됨 ✓
+                      </span>
+                    ) : (
+                      '비밀번호는 설정 파일이 아닌 암호화된 별도 저장소에 보관됩니다.'
+                    )}
+                  </p>
+                </Field>
+
+                <div className="rounded-lg border border-border bg-bg/40 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-xs font-medium text-text">
+                        로그인 셋업
+                        {hasSetupSpec && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-normal text-ok">
+                            <CheckIcon width={12} height={12} /> 생성됨 ✓
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      icon={<SparkleIcon width={14} height={14} />}
+                      loading={generatingSetup}
+                      loadingText="생성 중…"
+                      disabled={!canGenerateSetup}
+                      title={
+                        canGenerateSetup
+                          ? undefined
+                          : '로그인 URL · 아이디 · 비밀번호를 먼저 입력/저장하세요'
+                      }
+                      onClick={() => void generateAuthSetup()}
+                    >
+                      로그인 셋업 생성 (AI)
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-muted">
+                    AI가 로그인 페이지를 읽어 자동 로그인 셋업을 만들고, 실행 시 1회 로그인 후
+                    세션을 재사용합니다.
+                  </p>
                 </div>
               </div>
             )}
@@ -180,7 +266,7 @@ function Input({
 }: {
   value: string
   onChange: (v: string) => void
-  type?: 'text' | 'number'
+  type?: 'text' | 'number' | 'password'
   mono?: boolean
 }): JSX.Element {
   return (

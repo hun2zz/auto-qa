@@ -4,6 +4,7 @@ import {
   addRequirementText,
   approveChecklist,
   connectProject,
+  generateAuthSetup,
   generateChecklist,
   generateTests,
   getConfig,
@@ -13,7 +14,8 @@ import {
   saveChecklist,
   saveConfig
 } from './lib/projectManager'
-import { getLastReport, runTests } from './lib/runner'
+import { getLastReport, healAndRerun, runTests } from './lib/runner'
+import { getAuthStatus, setAuthSecret } from './lib/auth'
 
 /** 진행 이벤트를 호출한 창으로 전달 */
 function progressSender(e: Electron.IpcMainInvokeEvent): (p: ProgressEvent) => void {
@@ -76,4 +78,19 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.runTests, (e, projectPath: string) => runTests(projectPath, progressSender(e)))
   ipcMain.handle(IPC.getLastReport, (_e, projectPath: string) => getLastReport(projectPath))
+
+  // auth
+  ipcMain.handle(IPC.getAuthStatus, (_e, projectPath: string) => getAuthStatus(projectPath))
+  ipcMain.handle(IPC.setAuthSecret, (_e, projectPath: string, password: string) =>
+    setAuthSecret(projectPath, password)
+  )
+  ipcMain.handle(IPC.generateAuthSetup, async (e, projectPath: string) => {
+    await generateAuthSetup(projectPath, progressSender(e))
+    return getAuthStatus(projectPath)
+  })
+
+  // self-healing
+  ipcMain.handle(IPC.healAndRerun, (e, projectPath: string) =>
+    healAndRerun(projectPath, progressSender(e))
+  )
 }

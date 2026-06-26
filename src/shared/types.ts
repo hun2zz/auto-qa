@@ -22,12 +22,14 @@ export interface QaConfig {
   baseURL: string
   /** 서버 준비 대기 최대 시간(ms) */
   readyTimeoutMs: number
-  /** 로그인 시드 (선택) */
+  /** 첫 실패 N개 발생 시 즉시 중단(fail-fast). 0/미설정이면 끝까지 */
+  maxFailures?: number
+  /** 로그인 시드 (선택). 비밀번호는 config 에 저장하지 않고 safeStorage 로 암호화 보관 */
   auth?: {
+    enabled: boolean
     loginUrl: string
+    /** 아이디/이메일 (비밀번호는 별도 암호화 저장) */
     user: string
-    /** 비밀번호를 직접 저장하지 않고 환경변수명으로 참조 */
-    passEnv: string
   }
 }
 
@@ -74,6 +76,8 @@ export interface TestResult {
   durationMs: number
   /** 실패 시 에러 메시지 */
   error?: string
+  /** 이 테스트가 속한 spec 파일 (Playwright rootDir 기준 상대경로) */
+  file?: string
 }
 
 /** 한 번의 실행 리포트 */
@@ -134,8 +138,37 @@ export const IPC = {
   generateTests: 'tests:generate',
   runTests: 'tests:run',
   getLastReport: 'report:last',
+  // auth
+  getAuthStatus: 'auth:status',
+  setAuthSecret: 'auth:setSecret',
+  generateAuthSetup: 'auth:generateSetup',
+  // self-healing
+  healAndRerun: 'tests:heal',
   progress: 'progress:event'
 } as const
+
+/** 로그인(auth) 설정 상태 */
+export interface AuthStatus {
+  enabled: boolean
+  /** 비밀번호가 암호화 저장돼 있는지 */
+  hasSecret: boolean
+  /** auth.setup.ts(로그인 셋업 테스트)가 생성됐는지 */
+  hasSetupSpec: boolean
+  /** 이 머신에서 암호화(safeStorage) 사용 가능 여부 */
+  encryptionAvailable: boolean
+}
+
+/** self-healing 결과 */
+export interface HealResult {
+  /** 수정 시도한 spec 파일 수 */
+  attempted: number
+  /** AI 가 실제로 고친 spec 파일 수 */
+  healed: number
+  /** 재실행 후 리포트 */
+  report: RunReport
+  /** 고친 항목 요약 */
+  notes: string[]
+}
 
 // ----------------------------------------------------------------------------
 // preload 가 renderer 에 노출하는 API 표면 (window.api)
@@ -169,6 +202,16 @@ export interface AutoQaApi {
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트 */
   runTests(projectPath: string): Promise<RunReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
+
+  // --- 로그인(auth) ---
+  getAuthStatus(projectPath: string): Promise<AuthStatus>
+  /** 비밀번호를 safeStorage 로 암호화해 .qa/.auth/ 에 저장 */
+  setAuthSecret(projectPath: string, password: string): Promise<AuthStatus>
+  /** [AI] 로그인 페이지를 읽어 auth.setup.ts(세션 저장 셋업) 생성 */
+  generateAuthSetup(projectPath: string): Promise<AuthStatus>
+
+  /** [AI+결정적] 실패한 테스트의 셀렉터를 AI 가 고치고 재실행 (self-healing) */
+  healAndRerun(projectPath: string): Promise<HealResult>
 
   /** 진행 상황 구독. 반환된 함수 호출 시 해제 */
   onProgress(cb: (e: ProgressEvent) => void): () => void

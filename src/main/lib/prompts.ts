@@ -38,6 +38,64 @@ spec: null
 - 파일만 쓰고, 마지막 result 에는 무엇을 만들었는지 1~2줄 요약만.`
 }
 
+export function authSetupPrompt(args: {
+  loginUrl: string
+  setupOutPath: string
+  storageStateRel: string
+  userEnv: string
+  passEnv: string
+  urlEnv: string
+}): string {
+  return `너는 Playwright 인증 셋업 전문가다. "한 번 로그인 → 세션 저장(storageState)" 셋업 테스트를 만든다.
+
+# 작업
+1. 로그인 페이지(${args.loginUrl})의 폼을 프로젝트 코드에서 실제로 Read/Grep 해 확인한다. 아이디 입력, 비밀번호 입력, 로그인 버튼의 정확한 셀렉터(getByRole/getByLabel/getByTestId)를 찾는다. 추측 금지.
+2. 로그인 성공을 확정할 '관찰 가능한 신호'(예: 대시보드 URL 이동, 특정 메뉴 노출)를 코드에서 찾아 대기 조건으로 쓴다.
+
+# 출력 (반드시 이 파일을 Write)
+경로: ${args.setupOutPath}
+요건:
+- import { test as setup, expect } from '@playwright/test'
+- 자격증명은 환경변수에서만 읽는다 (코드에 값 하드코딩 절대 금지):
+  - URL: process.env.${args.urlEnv}
+  - 아이디: process.env.${args.userEnv}
+  - 비밀번호: process.env.${args.passEnv}
+- 로그인 절차 수행 후, 성공 신호를 expect 로 확인한 다음:
+  await page.context().storageState({ path: '${args.storageStateRel}' })
+- setup('authenticate', async ({ page }) => { ... }) 형태.
+
+# 규칙
+- 비밀번호 등 비밀값을 파일에 절대 적지 않는다(오직 process.env 참조).
+- 셀렉터를 코드에서 확정 못 하면 가장 합리적인 getByLabel/getByRole 추정을 쓰되 주석으로 표시한다.
+- 파일만 쓰고 result 에는 어떤 셀렉터를 썼는지 1~2줄 요약.`
+}
+
+export function healPrompt(args: {
+  specPath: string
+  storageStateRel: string | null
+  failures: string
+}): string {
+  return `너는 Playwright self-healing 전문가다. 셀렉터 변화로 '깨진' 테스트를 고친다. 테스트의 '의도'는 절대 바꾸지 않는다.
+
+# 입력
+- 깨진 spec: ${args.specPath}
+- 실패 내역(에러 메시지):
+${args.failures}
+
+# 작업
+1. spec 파일을 Read 한다.
+2. 실패 원인이 셀렉터/로케이터가 더 이상 안 맞아서인지 판단한다. 프로젝트 코드를 Read/Grep 해 현재 올바른 셀렉터를 찾는다.
+3. 깨진 셀렉터만 현재 코드에 맞는 것으로 교체한다. assertion 의 '검증 의도'(무엇을 확인하는지)는 그대로 둔다.
+
+# 출력 (Write 로 같은 경로에 덮어쓰기)
+경로: ${args.specPath}
+
+# 규칙
+- 절대 하지 말 것: 통과시키려고 assertion 을 약화/삭제, expect 를 주석처리, 의도와 다른 단언으로 교체. (거짓 통과 금지)
+- 셀렉터 변화가 원인이 아니라 '진짜 버그(실제로 기능이 깨짐)'로 보이면, 고치지 말고 그대로 두고 result 에 "REAL_BUG: <사유>" 라고 적는다.
+- 고쳤으면 result 에 "HEALED: <바꾼 셀렉터 요약>", 못 고쳤으면 "SKIPPED: <사유>" 로 시작하는 1~2줄 요약.`
+}
+
 export function testsPrompt(args: {
   checklistId: string
   checklistPath: string

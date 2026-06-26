@@ -6,7 +6,9 @@ import type {
   Checklist,
   RunReport,
   ProgressEvent,
-  ProgressPhase
+  ProgressPhase,
+  AuthStatus,
+  HealResult
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -41,6 +43,8 @@ interface AppState {
   requirements: RequirementFile[]
   checklists: Checklist[]
   lastReport: RunReport | null
+  authStatus: AuthStatus | null
+  lastHeal: HealResult | null
 
   // ── UI 상태 ────────────────────────────────────────────────────
   activeStep: StepId
@@ -83,6 +87,11 @@ interface AppState {
 
   runTests: () => Promise<void>
   loadLastReport: () => Promise<void>
+
+  loadAuthStatus: () => Promise<void>
+  setAuthSecret: (password: string) => Promise<void>
+  generateAuthSetup: () => Promise<void>
+  healAndRerun: () => Promise<void>
 }
 
 let logSeq = 0
@@ -118,6 +127,8 @@ export const useStore = create<AppState>((set, get) => {
     requirements: [],
     checklists: [],
     lastReport: null,
+    authStatus: null,
+    lastHeal: null,
 
     activeStep: 'requirements',
     configOpen: false,
@@ -173,10 +184,13 @@ export const useStore = create<AppState>((set, get) => {
           requirements: [],
           checklists: [],
           lastReport: null,
+          authStatus: null,
+          lastHeal: null,
           config: null,
           activeStep: 'requirements'
         })
         await get().refreshAll()
+        await get().loadAuthStatus()
         get().pushToast('success', `'${project.name}' 프로젝트에 연결되었습니다`)
       })
     },
@@ -188,7 +202,8 @@ export const useStore = create<AppState>((set, get) => {
         get().loadConfig(),
         get().refreshRequirements(),
         get().refreshChecklists(),
-        get().loadLastReport()
+        get().loadLastReport(),
+        get().loadAuthStatus()
       ])
     },
 
@@ -314,6 +329,49 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       const lastReport = await window.api.getLastReport(project.path).catch(() => null)
       set({ lastReport })
+    },
+
+    loadAuthStatus: async () => {
+      const { project } = get()
+      if (!project) return
+      const authStatus = await window.api.getAuthStatus(project.path).catch(() => null)
+      set({ authStatus })
+    },
+
+    setAuthSecret: async (password) => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('setAuthSecret', async () => {
+        const authStatus = await window.api.setAuthSecret(project.path, password)
+        set({ authStatus })
+        get().pushToast('success', '비밀번호가 안전하게 저장되었습니다')
+      })
+    },
+
+    generateAuthSetup: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('generateAuthSetup', async () => {
+        const authStatus = await window.api.generateAuthSetup(project.path)
+        set({ authStatus })
+        get().pushToast('success', '로그인 셋업이 생성되었습니다')
+      })
+    },
+
+    healAndRerun: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('healAndRerun', async () => {
+        const result = await window.api.healAndRerun(project.path)
+        set({ lastReport: result.report, lastHeal: result })
+        if (result.healed > 0) {
+          get().pushToast('success', `AI가 ${result.healed}개 수정 후 재실행했습니다`)
+        } else if (result.attempted > 0) {
+          get().pushToast('info', '자동 수정할 수 있는 항목이 없었습니다')
+        } else {
+          get().pushToast('info', '실패한 테스트가 없습니다')
+        }
+      })
     }
   }
 })

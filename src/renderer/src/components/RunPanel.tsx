@@ -1,9 +1,9 @@
 import { useState, type JSX } from 'react'
-import type { RunReport, TestResult, TestStatus } from '@shared/types'
+import type { HealResult, RunReport, TestResult, TestStatus } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState } from './common'
-import { PlayIcon, AlertIcon, ChevronIcon } from './icons'
+import { PlayIcon, AlertIcon, ChevronIcon, SparkleIcon } from './icons'
 
 export function RunPanel(): JSX.Element {
   const lastReport = useStore((s) => s.lastReport)
@@ -55,6 +55,94 @@ export function RunPanel(): JSX.Element {
   )
 }
 
+function SelfHealing({ report }: { report: RunReport }): JSX.Element | null {
+  const healAndRerun = useStore((s) => s.healAndRerun)
+  const healing = useStore((s) => !!s.busyKeys['healAndRerun'])
+  const lastHeal = useStore((s) => s.lastHeal)
+
+  const canHeal = !report.fatalError && report.failed > 0
+  if (!canHeal && !lastHeal) return null
+
+  return (
+    <div className="rounded-xl border border-brand/30 bg-brand/[0.06] p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
+            <SparkleIcon width={15} height={15} className="text-brand-soft" />
+            AI 자동 수정 (self-healing)
+          </h3>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+            셀렉터가 바뀌어 깨진 테스트를 AI가 고쳐서 다시 돌립니다. 실제 버그는 고치지 않고
+            표시합니다.
+          </p>
+        </div>
+        {canHeal && (
+          <Button
+            variant="secondary"
+            icon={<SparkleIcon width={14} height={14} />}
+            loading={healing}
+            loadingText="수정 중…"
+            onClick={() => void healAndRerun()}
+          >
+            AI 자동 수정 &amp; 재실행 (self-healing)
+          </Button>
+        )}
+      </div>
+      {lastHeal && <HealNotes heal={lastHeal} />}
+    </div>
+  )
+}
+
+function HealNotes({ heal }: { heal: HealResult }): JSX.Element {
+  const [open, setOpen] = useState(true)
+  const hasNotes = heal.notes.length > 0
+
+  return (
+    <div className="mt-3 border-t border-brand/20 pt-3">
+      <button
+        type="button"
+        disabled={!hasNotes}
+        onClick={() => setOpen((v) => !v)}
+        className={[
+          'flex w-full items-center gap-2 text-left',
+          hasNotes ? 'cursor-pointer' : 'cursor-default'
+        ].join(' ')}
+      >
+        <span className="text-xs font-semibold text-text">수정 내역</span>
+        <span className="font-mono text-[11px] text-muted">
+          {heal.healed}/{heal.attempted} 수정
+        </span>
+        {hasNotes && (
+          <ChevronIcon
+            width={14}
+            height={14}
+            className={`ml-auto shrink-0 text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          />
+        )}
+      </button>
+      {hasNotes && open && (
+        <div className="mt-2 space-y-1">
+          {heal.notes.map((note, i) => (
+            <p
+              key={i}
+              className={`whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed ${healNoteTone(note)}`}
+            >
+              {note}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function healNoteTone(note: string): string {
+  const trimmed = note.trimStart()
+  if (trimmed.startsWith('HEALED')) return 'text-ok'
+  if (trimmed.startsWith('REAL_BUG') || trimmed.startsWith('SKIP')) return 'text-warn'
+  return 'text-muted'
+}
+
 function ReportView({ report }: { report: RunReport }): JSX.Element {
   const startedAt = new Date(report.startedAt)
   const passRate = report.total > 0 ? Math.round((report.passed / report.total) * 100) : 0
@@ -96,6 +184,9 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
           />
         </div>
       </div>
+
+      {/* self-healing */}
+      <SelfHealing report={report} />
 
       {/* 결과 목록 */}
       {report.results.length > 0 && (

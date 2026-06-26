@@ -11,7 +11,8 @@ import {
   type RequirementFile
 } from '@shared/types'
 import { runClaude } from './claudeRunner'
-import { checklistPrompt, testsPrompt } from './prompts'
+import { authSetupPrompt, checklistPrompt, testsPrompt } from './prompts'
+import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 
 // ----------------------------------------------------------------------------
 // .qa 폴더 레이아웃
@@ -52,10 +53,8 @@ async function ensureScaffold(path: string): Promise<void> {
   if (!existsSync(configPath(path))) {
     await fs.writeFile(configPath(path), JSON.stringify(DEFAULT_QA_CONFIG, null, 2), 'utf8')
   }
-  const pwConfig = join(qaDir(path), 'playwright.config.ts')
-  if (!existsSync(pwConfig)) {
-    await fs.writeFile(pwConfig, playwrightConfigTemplate(), 'utf8')
-  }
+  // playwright.config 은 툴이 생성/관리하므로 항상 최신 템플릿으로 갱신
+  await fs.writeFile(join(qaDir(path), 'playwright.config.ts'), playwrightConfigTemplate(), 'utf8')
   const gi = join(qaDir(path), '.gitignore')
   if (!existsSync(gi)) {
     await fs.writeFile(gi, ['reports/', 'test-results/', '.auth/', ''].join('\n'), 'utf8')
@@ -66,18 +65,32 @@ function playwrightConfigTemplate(): string {
   return `import { defineConfig } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-// auto-qa 가 생성. baseURL 은 .qa/config.json 에서 읽는다.
+// auto-qa 가 생성/관리. 설정은 .qa/config.json 에서 읽는다.
 const cfg = JSON.parse(readFileSync(new URL('./config.json', import.meta.url), 'utf8'))
+const authEnabled = !!(cfg.auth && cfg.auth.enabled)
+const STORAGE = '.qa/.auth/state.json'
 
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
+  // fail-fast: 실패 N개 발생 시 즉시 중단 (0/미설정이면 끝까지)
+  maxFailures: cfg.maxFailures && cfg.maxFailures > 0 ? cfg.maxFailures : undefined,
   reporter: [['json', { outputFile: './reports/last.json' }], ['list']],
   use: {
     baseURL: cfg.baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure'
-  }
+  },
+  projects: [
+    // 로그인 셋업: 한 번 로그인 → 세션을 STORAGE 에 저장. 실패하면 main 은 자동 skip.
+    ...(authEnabled ? [{ name: 'setup', testMatch: /auth\\.setup\\.ts/ }] : []),
+    {
+      name: 'main',
+      testIgnore: authEnabled ? /auth\\.setup\\.ts/ : undefined,
+      dependencies: authEnabled ? ['setup'] : [],
+      use: authEnabled ? { storageState: STORAGE } : {}
+    }
+  ]
 })
 `
 }
@@ -283,7 +296,38 @@ export async function generateTests(
 }
 
 // ----------------------------------------------------------------------------
+// 로그인 셋업 생성 (AI)
+// ----------------------------------------------------------------------------
+
+/** [AI] 로그인 페이지를 읽어 auth.setup.ts(세션 저장 셋업) 생성 */
+export async function generateAuthSetup(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<void> {
+  const config = await getConfig(projectPath)
+  if (!config.auth?.enabled) throw new Error('설정에서 로그인(auth)을 먼저 켜고 로그인 URL/아이디를 입력하세요.')
+
+  const setupOutPath = join(qaDir(projectPath), 'tests', 'auth.setup.ts')
+  const res = await runClaude({
+    projectPath,
+    prompt: authSetupPrompt({
+      loginUrl: config.auth.loginUrl,
+      setupOutPath,
+      storageStateRel: STORAGE_STATE_REL,
+      userEnv: AUTH_ENV.user,
+      passEnv: AUTH_ENV.password,
+      urlEnv: AUTH_ENV.loginUrl
+    }),
+    allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+    phase: 'tests',
+    onProgress
+  })
+  if (!res.ok) throw new Error(res.error || '로그인 셋업 생성 실패')
+  if (!existsSync(setupOutPath)) throw new Error('auth.setup.ts 가 생성되지 않았습니다.')
+}
+
+// ----------------------------------------------------------------------------
 // 리포트
 // ----------------------------------------------------------------------------
 
-export { lastReportPath, qaDir, reportDir }
+export { lastReportPath, qaDir, reportDir, testsDir }
