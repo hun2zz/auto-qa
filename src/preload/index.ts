@@ -4,6 +4,9 @@ import { IPC, type AutoQaApi, type ProgressEvent } from '@shared/types'
 
 const api: AutoQaApi = {
   openProject: () => ipcRenderer.invoke(IPC.openProject),
+  getLastProject: () => ipcRenderer.invoke(IPC.getLastProject),
+  getRecentProjects: () => ipcRenderer.invoke(IPC.getRecentProjects),
+  reopenProject: (path) => ipcRenderer.invoke(IPC.reopenProject, path),
   getConfig: (p) => ipcRenderer.invoke(IPC.getConfig, p),
   saveConfig: (p, c) => ipcRenderer.invoke(IPC.saveConfig, p, c),
   listRules: (p) => ipcRenderer.invoke(IPC.listRules, p),

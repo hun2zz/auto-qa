@@ -72,6 +72,7 @@ interface AppState {
   initProgress: () => () => void
 
   openProject: () => Promise<void>
+  restoreLastProject: () => Promise<void>
   refreshAll: () => Promise<void>
   loadConfig: () => Promise<void>
   saveConfig: (config: QaConfig) => Promise<void>
@@ -198,6 +199,23 @@ export const useStore = create<AppState>((set, get) => {
         await get().loadAuthStatus()
         get().pushToast('success', `'${project.name}' 프로젝트에 연결되었습니다`)
       })
+    },
+
+    restoreLastProject: async () => {
+      // 앱 시작 시 마지막으로 연 프로젝트를 조용히 자동 재연결
+      const project = await window.api.getLastProject().catch(() => null)
+      if (!project) return
+      set({
+        project,
+        requirements: [],
+        checklists: [],
+        lastReport: null,
+        authStatus: null,
+        lastHeal: null,
+        config: null,
+        activeStep: 'requirements'
+      })
+      await get().refreshAll()
     },
 
     refreshAll: async () => {

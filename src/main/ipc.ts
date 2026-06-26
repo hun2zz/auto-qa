@@ -15,6 +15,8 @@ import {
   saveConfig
 } from './lib/projectManager'
 import { listRules, saveRule } from './lib/rules'
+import { getLastProjectPath, getRecentProjects, rememberProject } from './lib/appSettings'
+import { existsSync } from 'node:fs'
 import { getLastReport, healAndRerun, runTests } from './lib/runner'
 import { getAuthStatus, setAuthSecret } from './lib/auth'
 
@@ -32,7 +34,26 @@ export function registerIpc(): void {
       properties: ['openDirectory']
     })
     if (res.canceled || !res.filePaths[0]) return null
-    return connectProject(res.filePaths[0])
+    const info = await connectProject(res.filePaths[0])
+    await rememberProject(info.path)
+    return info
+  })
+
+  ipcMain.handle(IPC.getLastProject, async () => {
+    const path = await getLastProjectPath()
+    if (!path) return null
+    const info = await connectProject(path)
+    await rememberProject(info.path)
+    return info
+  })
+
+  ipcMain.handle(IPC.getRecentProjects, () => getRecentProjects())
+
+  ipcMain.handle(IPC.reopenProject, async (_e, path: string) => {
+    if (!existsSync(path)) return null
+    const info = await connectProject(path)
+    await rememberProject(info.path)
+    return info
   })
 
   ipcMain.handle(IPC.getConfig, (_e, projectPath: string) => getConfig(projectPath))

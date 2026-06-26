@@ -16,6 +16,7 @@ export default function App(): JSX.Element {
   const activeStep = useStore((s) => s.activeStep)
   const initProgress = useStore((s) => s.initProgress)
   const openProject = useStore((s) => s.openProject)
+  const restoreLastProject = useStore((s) => s.restoreLastProject)
   const opening = useStore((s) => !!s.busyKeys['openProject'])
 
   // 진행 상황 구독은 마운트 시 한 번만
@@ -23,6 +24,11 @@ export default function App(): JSX.Element {
     const unsubscribe = initProgress()
     return unsubscribe
   }, [initProgress])
+
+  // 앱 시작 시 마지막으로 연 프로젝트 자동 복원
+  useEffect(() => {
+    void restoreLastProject()
+  }, [restoreLastProject])
 
   return (
     <div className="flex h-full w-full bg-bg">

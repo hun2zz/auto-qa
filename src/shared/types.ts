@@ -136,6 +136,9 @@ export interface ProgressEvent {
 
 export const IPC = {
   openProject: 'project:open',
+  getLastProject: 'project:last',
+  getRecentProjects: 'project:recent',
+  reopenProject: 'project:reopen',
   getConfig: 'project:getConfig',
   saveConfig: 'project:saveConfig',
   listRules: 'rules:list',
@@ -189,6 +192,12 @@ export interface HealResult {
 export interface AutoQaApi {
   /** 폴더 선택 다이얼로그 → 프로젝트 연결 (.qa 없으면 생성) */
   openProject(): Promise<ProjectInfo | null>
+  /** 앱 시작 시: 마지막으로 연 프로젝트 자동 재연결 (없으면 null) */
+  getLastProject(): Promise<ProjectInfo | null>
+  /** 최근 연 프로젝트 경로 목록 */
+  getRecentProjects(): Promise<string[]>
+  /** 특정 경로의 프로젝트를 다시 연결 */
+  reopenProject(path: string): Promise<ProjectInfo | null>
   getConfig(projectPath: string): Promise<QaConfig>
   saveConfig(projectPath: string, config: QaConfig): Promise<void>
   /** .qa/rules/*.md — 단계별로 쪼갠 가드레일 규칙 (무신사식). 해당 phase 규칙만 AI 에 주입됨 */
