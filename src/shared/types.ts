@@ -128,6 +128,8 @@ export const IPC = {
   openProject: 'project:open',
   getConfig: 'project:getConfig',
   saveConfig: 'project:saveConfig',
+  getRules: 'project:getRules',
+  saveRules: 'project:saveRules',
   listRequirements: 'req:list',
   uploadRequirement: 'req:upload',
   addRequirementText: 'req:addText',
@@ -179,6 +181,9 @@ export interface AutoQaApi {
   openProject(): Promise<ProjectInfo | null>
   getConfig(projectPath: string): Promise<QaConfig>
   saveConfig(projectPath: string, config: QaConfig): Promise<void>
+  /** .qa/RULES.md — 모든 AI 단계가 준수하는 가드레일 문서 */
+  getRules(projectPath: string): Promise<string>
+  saveRules(projectPath: string, content: string): Promise<void>
 
   listRequirements(projectPath: string): Promise<RequirementFile[]>
   /** 파일 선택 → .qa/requirements/ 로 복사 (md/txt/pdf/이미지 등) */

@@ -8,11 +8,13 @@ import {
   generateChecklist,
   generateTests,
   getConfig,
+  getRules,
   importRequirement,
   listChecklists,
   listRequirements,
   saveChecklist,
-  saveConfig
+  saveConfig,
+  saveRules
 } from './lib/projectManager'
 import { getLastReport, healAndRerun, runTests } from './lib/runner'
 import { getAuthStatus, setAuthSecret } from './lib/auth'
@@ -36,6 +38,10 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.getConfig, (_e, projectPath: string) => getConfig(projectPath))
   ipcMain.handle(IPC.saveConfig, (_e, projectPath: string, config) => saveConfig(projectPath, config))
+  ipcMain.handle(IPC.getRules, (_e, projectPath: string) => getRules(projectPath))
+  ipcMain.handle(IPC.saveRules, (_e, projectPath: string, content: string) =>
+    saveRules(projectPath, content)
+  )
 
   ipcMain.handle(IPC.listRequirements, (_e, projectPath: string) => listRequirements(projectPath))
 

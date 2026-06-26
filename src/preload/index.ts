@@ -6,6 +6,8 @@ const api: AutoQaApi = {
   openProject: () => ipcRenderer.invoke(IPC.openProject),
   getConfig: (p) => ipcRenderer.invoke(IPC.getConfig, p),
   saveConfig: (p, c) => ipcRenderer.invoke(IPC.saveConfig, p, c),
+  getRules: (p) => ipcRenderer.invoke(IPC.getRules, p),
+  saveRules: (p, content) => ipcRenderer.invoke(IPC.saveRules, p, content),
 
   listRequirements: (p) => ipcRenderer.invoke(IPC.listRequirements, p),
   uploadRequirement: (p) => ipcRenderer.invoke(IPC.uploadRequirement, p),

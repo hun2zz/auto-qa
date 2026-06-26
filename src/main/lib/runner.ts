@@ -2,12 +2,12 @@ import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import type { HealResult, ProgressEvent, RunReport, TestResult } from '@shared/types'
-import { getConfig, lastReportPath, qaDir, testsDir } from './projectManager'
+import { getConfig, getRules, lastReportPath, qaDir, testsDir } from './projectManager'
 import { startDevServer, type DevServerHandle } from './devServer'
 import { runPlaywright } from './playwrightRunner'
 import { runClaude } from './claudeRunner'
 import { authEnv } from './auth'
-import { healPrompt } from './prompts'
+import { healPrompt, rulesHeader } from './prompts'
 
 /** [결정적] dev 서버 구동 → Playwright 실행 → 리포트 저장. AI 미사용. */
 export async function runTests(
@@ -56,6 +56,7 @@ export async function healAndRerun(
     }
 
     // 2. 실패 spec 별로 AI 치유 (최대 5개 파일)
+    const rules = rulesHeader(await getRules(projectPath))
     let attempted = 0
     let healed = 0
     for (const [file, failures] of [...failedFiles].slice(0, 5)) {
@@ -68,11 +69,13 @@ export async function healAndRerun(
       onProgress({ phase: 'tests', message: `AI 자동 수정 중: ${file}` })
       const res = await runClaude({
         projectPath,
-        prompt: healPrompt({
-          specPath,
-          storageStateRel: null,
-          failures: failures.map((f) => `- ${f.title}: ${trim(f.error)}`).join('\n')
-        }),
+        prompt:
+          rules +
+          healPrompt({
+            specPath,
+            storageStateRel: null,
+            failures: failures.map((f) => `- ${f.title}: ${trim(f.error)}`).join('\n')
+          }),
         allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
         phase: 'tests',
         onProgress

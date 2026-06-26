@@ -45,6 +45,7 @@ interface AppState {
   lastReport: RunReport | null
   authStatus: AuthStatus | null
   lastHeal: HealResult | null
+  rules: string
 
   // ── UI 상태 ────────────────────────────────────────────────────
   activeStep: StepId
@@ -73,6 +74,8 @@ interface AppState {
   refreshAll: () => Promise<void>
   loadConfig: () => Promise<void>
   saveConfig: (config: QaConfig) => Promise<void>
+  loadRules: () => Promise<void>
+  saveRules: (content: string) => Promise<void>
 
   uploadRequirement: () => Promise<void>
   addRequirementText: (title: string, content: string) => Promise<boolean>
@@ -129,6 +132,7 @@ export const useStore = create<AppState>((set, get) => {
     lastReport: null,
     authStatus: null,
     lastHeal: null,
+    rules: '',
 
     activeStep: 'requirements',
     configOpen: false,
@@ -200,6 +204,7 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       await Promise.all([
         get().loadConfig(),
+        get().loadRules(),
         get().refreshRequirements(),
         get().refreshChecklists(),
         get().loadLastReport(),
@@ -221,6 +226,23 @@ export const useStore = create<AppState>((set, get) => {
         await window.api.saveConfig(project.path, config)
         set({ config, configOpen: false })
         get().pushToast('success', '설정이 저장되었습니다')
+      })
+    },
+
+    loadRules: async () => {
+      const { project } = get()
+      if (!project) return
+      const rules = await window.api.getRules(project.path).catch(() => '')
+      set({ rules })
+    },
+
+    saveRules: async (content) => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('saveRules', async () => {
+        await window.api.saveRules(project.path, content)
+        set({ rules: content })
+        get().pushToast('success', 'QA 규칙(RULES.md)이 저장되었습니다')
       })
     },
 

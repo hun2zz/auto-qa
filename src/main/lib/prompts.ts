@@ -2,6 +2,42 @@
 // 핵심 원칙: AI 는 "탐색·생성"만, 판정은 결정적(Playwright assertion)에 맡긴다.
 // 따라서 프롬프트는 항상 "코드를 실제로 읽고 근거에 기반해" 결과 '파일을 직접 쓰라'고 지시한다.
 
+/** 모든 생성/수정 프롬프트 앞에 붙는 가드레일(.qa/RULES.md). 무신사식 "규칙 문서" 패턴. */
+export function rulesHeader(rules: string): string {
+  const body = rules.trim()
+  if (!body) return ''
+  return `# 프로젝트 QA 규칙 (.qa/RULES.md — 아래 규칙을 예외 없이 모두 준수한다)
+${body}
+
+위 규칙은 이후의 모든 지시에 우선한다. 규칙과 충돌하면 규칙을 따른다.
+────────────────────────────────────────────────────────
+
+`
+}
+
+/** .qa/RULES.md 기본 템플릿 (무신사 4대 원칙을 E2E 맥락으로 적용) */
+export const DEFAULT_RULES = `# QA 규칙 (RULES.md)
+
+이 파일은 AI 가 체크리스트·테스트를 생성하거나 수정할 때 **반드시 준수**하는 규칙입니다.
+프로젝트에 맞게 자유롭게 편집하세요. (모든 AI 단계가 이 파일을 우선 적용합니다.)
+
+## 절대 원칙
+1. **프로덕션 소스코드를 절대 수정하지 않는다.** 오직 .qa/ 안의 테스트·문서만 생성·수정한다.
+2. **거짓 통과 금지.** 테스트를 통과시키려고 assertion 을 약화·삭제·주석처리하지 않는다.
+3. 셀렉터·기대값을 추측하지 않는다. 프로젝트 코드에서 실제로 확인한다.
+4. 확인 불가한 항목은 test.fixme() 로 두고 사유를 주석에 남긴다.
+5. 셀렉터 변화가 아니라 '진짜 버그'로 보이면 고치지 말고 REAL_BUG 로 표시한다.
+
+## 작성 규칙
+6. 각 테스트는 하나의 '관찰 가능한 결과'만 검증한다.
+7. 불필요한 wait/sleep 금지. web-first assertion(auto-waiting)을 사용한다.
+8. 셀렉터 우선순위: getByRole > getByLabel > getByTestId > getByText. CSS/xpath 는 최후수단.
+9. 테스트 제목은 체크리스트 항목과 1:1 로 대응시킨다.
+
+## 도메인 규칙 (프로젝트에 맞게 추가)
+- (예: 로그인은 storageState 재사용 / 결제·발송 등 부수효과 있는 플로우는 테스트 계정·시드데이터만 사용)
+`
+
 export function checklistPrompt(args: {
   requirementName: string
   requirementPath: string

@@ -18,9 +18,14 @@ export function ConfigModal(): JSX.Element | null {
   const savingSecret = useStore((s) => !!s.busyKeys['setAuthSecret'])
   const generatingSetup = useStore((s) => !!s.busyKeys['generateAuthSetup'])
 
+  const rules = useStore((s) => s.rules)
+  const saveRules = useStore((s) => s.saveRules)
+  const savingRules = useStore((s) => !!s.busyKeys['saveRules'])
+
   const [form, setForm] = useState<QaConfig>(config ?? DEFAULT_QA_CONFIG)
   const [authEnabled, setAuthEnabled] = useState(!!config?.auth?.enabled)
   const [password, setPassword] = useState('')
+  const [rulesDraft, setRulesDraft] = useState('')
 
   // 모달이 열릴 때 현재 설정으로 초기화
   useEffect(() => {
@@ -28,8 +33,9 @@ export function ConfigModal(): JSX.Element | null {
       setForm(config ?? DEFAULT_QA_CONFIG)
       setAuthEnabled(!!config?.auth?.enabled)
       setPassword('')
+      setRulesDraft(rules)
     }
-  }, [open, config])
+  }, [open, config, rules])
 
   if (!open) return null
 
@@ -217,6 +223,37 @@ export function ConfigModal(): JSX.Element | null {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* QA 규칙 (RULES.md) — 모든 AI 단계가 우선 준수 */}
+          <div className="rounded-xl border border-border bg-surface-2/40 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-medium text-text">
+                  <SparkleIcon width={14} height={14} className="text-brand-soft" />
+                  QA 규칙 (RULES.md)
+                </p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+                  AI가 체크리스트·테스트를 생성/수정할 때 항상 우선 준수하는 가드레일입니다.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                loading={savingRules}
+                loadingText="저장 중…"
+                disabled={rulesDraft === rules}
+                onClick={() => void saveRules(rulesDraft)}
+              >
+                규칙 저장
+              </Button>
+            </div>
+            <textarea
+              value={rulesDraft}
+              onChange={(e) => setRulesDraft(e.target.value)}
+              spellCheck={false}
+              rows={10}
+              className="mt-3 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2.5 font-mono text-[12px] leading-relaxed text-text outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/20"
+            />
           </div>
         </div>
 
