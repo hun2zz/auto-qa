@@ -92,6 +92,34 @@ export interface CoverageReport {
   items: CoverageItem[]
 }
 
+// ----------------------------------------------------------------------------
+// 코드 커버리지 (서버+클라, nextcov V8 기반 · production 빌드)
+// ----------------------------------------------------------------------------
+
+export interface CoverageMetric {
+  pct: number
+  covered: number
+  total: number
+}
+
+export interface CodeCoverageReport {
+  generatedAt: string
+  statements: CoverageMetric
+  branches: CoverageMetric
+  functions: CoverageMetric
+  lines: CoverageMetric
+  /** 실제로 한 줄이라도 실행된 파일 수 */
+  executedFiles: number
+  /** 커버리지 대상 전체 파일 수 */
+  totalFiles: number
+  /** 크롤링한 라우트 */
+  routes: string[]
+  /** 경고/제약 (소스맵 누락 등) */
+  warning?: string
+  /** 실행 실패 사유 */
+  fatalError?: string
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -193,6 +221,8 @@ export const IPC = {
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
   getCoverageReports: 'coverage:list',
+  runCodeCoverage: 'coverage:code:run',
+  getCodeCoverage: 'coverage:code:get',
   // auth
   getAuthStatus: 'auth:status',
   setAuthSecret: 'auth:setSecret',
@@ -279,6 +309,10 @@ export interface AutoQaApi {
   ): Promise<CoverageReport>
   /** 저장된 커버리지 리포트들 */
   getCoverageReports(projectPath: string): Promise<CoverageReport[]>
+
+  /** [무거움] production 빌드 + nextcov 로 서버+클라 코드 라인 커버리지 측정 */
+  runCodeCoverage(projectPath: string): Promise<CodeCoverageReport>
+  getCodeCoverage(projectPath: string): Promise<CodeCoverageReport | null>
 
   // --- 로그인(auth) ---
   getAuthStatus(projectPath: string): Promise<AuthStatus>

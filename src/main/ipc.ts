@@ -23,6 +23,7 @@ import { getLastProjectPath, getRecentProjects, rememberProject } from './lib/ap
 import { existsSync } from 'node:fs'
 import { getLastReport, healAndRerun, runTests } from './lib/runner'
 import { getAuthStatus, setAuthSecret } from './lib/auth'
+import { getCodeCoverage, runCodeCoverage } from './lib/codeCoverage'
 
 /** 진행 이벤트를 호출한 창으로 전달 */
 function progressSender(e: Electron.IpcMainInvokeEvent): (p: ProgressEvent) => void {
@@ -125,6 +126,12 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getCoverageReports, (_e, projectPath: string) =>
     getCoverageReports(projectPath)
   )
+
+  ipcMain.handle(IPC.runCodeCoverage, async (e, projectPath: string) => {
+    const config = await getConfig(projectPath)
+    return runCodeCoverage(projectPath, config.baseURL, progressSender(e))
+  })
+  ipcMain.handle(IPC.getCodeCoverage, (_e, projectPath: string) => getCodeCoverage(projectPath))
   ipcMain.handle(IPC.getLastReport, (_e, projectPath: string) => getLastReport(projectPath))
 
   // auth

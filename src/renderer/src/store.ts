@@ -11,7 +11,8 @@ import type {
   HealResult,
   RuleFile,
   CoverageReport,
-  CoverageKind
+  CoverageKind,
+  CodeCoverageReport
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -50,6 +51,7 @@ interface AppState {
   lastHeal: HealResult | null
   rules: RuleFile[]
   coverageReports: CoverageReport[]
+  codeCoverage: CodeCoverageReport | null
 
   // ── UI 상태 ────────────────────────────────────────────────────
   activeStep: StepId
@@ -99,6 +101,8 @@ interface AppState {
   loadLastReport: () => Promise<void>
   auditCoverage: (requirementName: string, kind: CoverageKind) => Promise<void>
   loadCoverageReports: () => Promise<void>
+  runCodeCoverage: () => Promise<void>
+  loadCodeCoverage: () => Promise<void>
 
   loadAuthStatus: () => Promise<void>
   setAuthSecret: (password: string) => Promise<void>
@@ -143,6 +147,7 @@ export const useStore = create<AppState>((set, get) => {
     lastHeal: null,
     rules: [],
     coverageReports: [],
+    codeCoverage: null,
 
     activeStep: 'requirements',
     configOpen: false,
@@ -236,7 +241,8 @@ export const useStore = create<AppState>((set, get) => {
         get().refreshChecklists(),
         get().loadLastReport(),
         get().loadAuthStatus(),
-        get().loadCoverageReports()
+        get().loadCoverageReports(),
+        get().loadCodeCoverage()
       ])
     },
 
@@ -406,6 +412,24 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       const coverageReports = await window.api.getCoverageReports(project.path).catch(() => [])
       set({ coverageReports })
+    },
+
+    loadCodeCoverage: async () => {
+      const { project } = get()
+      if (!project) return
+      const codeCoverage = await window.api.getCodeCoverage(project.path).catch(() => null)
+      set({ codeCoverage })
+    },
+
+    runCodeCoverage: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('runCodeCoverage', async () => {
+        const codeCoverage = await window.api.runCodeCoverage(project.path)
+        set({ codeCoverage })
+        if (codeCoverage.fatalError) get().pushToast('error', `코드 커버리지 실패: ${codeCoverage.fatalError}`)
+        else get().pushToast('success', `코드 커버리지 — 라인 ${codeCoverage.lines.pct}%`)
+      })
     },
 
     auditCoverage: async (requirementName, kind) => {

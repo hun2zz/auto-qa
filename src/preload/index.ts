@@ -32,6 +32,8 @@ const api: AutoQaApi = {
   auditCoverage: (p, requirementName, kind) =>
     ipcRenderer.invoke(IPC.auditCoverage, p, requirementName, kind),
   getCoverageReports: (p) => ipcRenderer.invoke(IPC.getCoverageReports, p),
+  runCodeCoverage: (p) => ipcRenderer.invoke(IPC.runCodeCoverage, p),
+  getCodeCoverage: (p) => ipcRenderer.invoke(IPC.getCodeCoverage, p),
 
   getAuthStatus: (p) => ipcRenderer.invoke(IPC.getAuthStatus, p),
   setAuthSecret: (p, password) => ipcRenderer.invoke(IPC.setAuthSecret, p, password),

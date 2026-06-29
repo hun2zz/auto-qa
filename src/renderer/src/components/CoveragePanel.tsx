@@ -1,9 +1,15 @@
 import type { JSX } from 'react'
-import type { CoverageItem, CoverageKind, CoverageReport, CoverageStatus } from '@shared/types'
+import type {
+  CodeCoverageReport,
+  CoverageItem,
+  CoverageKind,
+  CoverageReport,
+  CoverageStatus
+} from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
-import { ChecklistIcon, DocIcon, SparkleIcon } from './icons'
+import { ChecklistIcon, DocIcon, SparkleIcon, FlaskIcon } from './icons'
 
 export function CoveragePanel(): JSX.Element {
   const requirements = useStore((s) => s.requirements)
@@ -24,6 +30,7 @@ export function CoveragePanel(): JSX.Element {
           />
         ) : (
           <div className="flex flex-col gap-4">
+            <CodeCoverageSection />
             <p className="flex items-center gap-1.5 text-[11.5px] text-muted">
               <SparkleIcon width={13} height={13} />※ AI 판정이므로 evidence(근거)를 함께 확인하세요.
             </p>
@@ -34,6 +41,87 @@ export function CoveragePanel(): JSX.Element {
         )}
       </PanelBody>
     </>
+  )
+}
+
+function CodeCoverageSection(): JSX.Element {
+  const report = useStore((s) => s.codeCoverage)
+  const run = useStore((s) => s.runCodeCoverage)
+  const busy = useStore((s) => !!s.busyKeys['runCodeCoverage'])
+
+  return (
+    <article className="overflow-hidden rounded-xl border border-brand/30 bg-brand/[0.04]">
+      <div className="flex items-center gap-3 px-5 py-4">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand-soft ring-1 ring-brand/30">
+          <FlaskIcon />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-medium text-text">코드 커버리지 (서버+클라)</h3>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+            테스트가 실제 코드 라인 몇 %를 실행하는지. nextcov(V8) · production 빌드라 무겁습니다(수 분).
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          icon={busy ? undefined : <FlaskIcon width={14} height={14} />}
+          loading={busy}
+          loadingText="측정 중… (수 분)"
+          onClick={() => void run()}
+        >
+          {report ? '다시 측정' : '코드 커버리지 측정'}
+        </Button>
+      </div>
+
+      {report && !report.fatalError && (
+        <div className="border-t border-border bg-surface-2/30 px-5 py-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <CodeMetric label="라인" m={report.lines} primary />
+            <CodeMetric label="구문" m={report.statements} />
+            <CodeMetric label="함수" m={report.functions} />
+            <CodeMetric label="분기" m={report.branches} />
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
+            <span>실행된 파일 {report.executedFiles}/{report.totalFiles}</span>
+            <span>크롤 라우트 {report.routes.length}개</span>
+          </div>
+          {report.warning && (
+            <p className="mt-2 text-[11.5px] text-warn">⚠ {report.warning}</p>
+          )}
+        </div>
+      )}
+      {report?.fatalError && (
+        <div className="border-t border-bad/30 bg-bad/5 px-5 py-3">
+          <p className="text-[12px] leading-relaxed text-bad">실패: {report.fatalError}</p>
+        </div>
+      )}
+    </article>
+  )
+}
+
+function CodeMetric({
+  label,
+  m,
+  primary = false
+}: {
+  label: string
+  m: CodeCoverageReport['lines']
+  primary?: boolean
+}): JSX.Element {
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3.5 py-3">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[11px] text-muted">{label}</span>
+        <span className={`text-lg font-semibold ${primary ? 'text-text' : 'text-muted'}`}>
+          {m.pct}%
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2 ring-1 ring-border">
+        <div className="h-full rounded-full bg-ok transition-all duration-500" style={{ width: `${m.pct}%` }} />
+      </div>
+      <p className="mt-1 text-[10.5px] text-muted">
+        {m.covered}/{m.total}
+      </p>
+    </div>
   )
 }
 
