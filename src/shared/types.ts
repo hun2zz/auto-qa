@@ -102,8 +102,18 @@ export interface CoverageMetric {
   total: number
 }
 
+/** 커버리지 낮은 파일 (gap) */
+export interface CoverageGap {
+  /** 프로젝트 기준 상대경로 */
+  file: string
+  /** 라인 커버리지 % */
+  pct: number
+}
+
 export interface CodeCoverageReport {
   generatedAt: string
+  /** 커버리지 낮은 파일 목록 (오름차순, 상위 N). "여기 테스트 없다" 지도 */
+  gaps: CoverageGap[]
   statements: CoverageMetric
   branches: CoverageMetric
   functions: CoverageMetric

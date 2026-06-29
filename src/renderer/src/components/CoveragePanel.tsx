@@ -74,6 +74,37 @@ function CodeCoverageSection(): JSX.Element {
               <span>실행한 테스트 spec {report.routes.length}개</span>
             </div>
             {report.warning && <p className="mt-2 text-[11.5px] text-warn">⚠ {report.warning}</p>}
+
+            {report.gaps.length > 0 && (
+              <div className="mt-5">
+                <p className="mb-2 text-xs font-medium text-text">
+                  테스트가 안 닿은 파일 (gap) · 낮은 순{' '}
+                  <span className="font-normal text-muted">
+                    — 여기에 테스트를 추가하면 커버리지가 오릅니다
+                  </span>
+                </p>
+                <ul className="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-surface">
+                  {report.gaps.map((g) => (
+                    <li
+                      key={g.file}
+                      className="flex items-center justify-between gap-3 px-3 py-1.5"
+                    >
+                      <span className="truncate font-mono text-[11.5px] text-muted" title={g.file}>
+                        {g.file}
+                      </span>
+                      <span
+                        className={`shrink-0 text-[11px] font-medium ${
+                          g.pct === 0 ? 'text-bad' : g.pct < 50 ? 'text-warn' : 'text-muted'
+                        }`}
+                      >
+                        {g.pct}%
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
               커버리지가 낮으면 = 테스트가 아직 부족하다는 신호. 모듈을 더 생성하고 로그인(auth)/시드를
               붙이면 올라갑니다.

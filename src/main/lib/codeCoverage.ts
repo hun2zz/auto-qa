@@ -296,16 +296,26 @@ async function parseReport(
   const files = Object.keys(c)
   let sT = 0, sC = 0, fT = 0, fC = 0, bT = 0, bC = 0
   let executed = 0
+  const prefix = projectPath.endsWith('/') ? projectPath : projectPath + '/'
+  const perFile: { file: string; pct: number }[] = []
   for (const f of files) {
     const s = c[f].s ?? {}
     let any = false
+    let ft = 0,
+      fc = 0
     for (const k in s) {
       sT++
+      ft++
       if (s[k] > 0) {
         sC++
+        fc++
         any = true
       }
     }
+    perFile.push({
+      file: f.startsWith(prefix) ? f.slice(prefix.length) : f,
+      pct: ft ? Math.round((fc / ft) * 1000) / 10 : 0
+    })
     const fn = c[f].f ?? {}
     for (const k in fn) {
       fT++
@@ -323,8 +333,10 @@ async function parseReport(
     total: tot,
     pct: tot ? Math.round((cov / tot) * 1000) / 10 : 0
   })
+  const gaps = perFile.sort((a, b) => a.pct - b.pct || a.file.localeCompare(b.file)).slice(0, 60)
   return {
     generatedAt: new Date().toISOString(),
+    gaps,
     statements: m(sC, sT),
     branches: m(bC, bT),
     functions: m(fC, fT),
@@ -393,6 +405,7 @@ function fail(msg: string, warning?: string): CodeCoverageReport {
   const z: CoverageMetric = { pct: 0, covered: 0, total: 0 }
   return {
     generatedAt: new Date().toISOString(),
+    gaps: [],
     statements: z,
     branches: z,
     functions: z,
