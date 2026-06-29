@@ -269,33 +269,61 @@ export async function generateChecklist(
     return [c]
   }
 
-  // 2) 모듈마다 체크리스트
-  onProgress({ phase: 'checklist', message: `${modules.length}개 모듈 → 체크리스트 생성 시작` })
-  const out: Checklist[] = []
-  for (let i = 0; i < modules.length; i++) {
-    const m = modules[i]
-    onProgress({
-      phase: 'checklist',
-      message: `[${i + 1}/${modules.length}] ${m.title}`,
-      fraction: (i + 1) / modules.length
-    })
+  // 2) 모듈마다 체크리스트 — 동시 실행으로 가속 (각 AI 호출이 독립적)
+  const CONCURRENCY = 4
+  onProgress({
+    phase: 'checklist',
+    message: `${modules.length}개 모듈 → 체크리스트 생성 (동시 ${CONCURRENCY}개)`
+  })
+  let done = 0
+  const results = await mapLimit(modules, CONCURRENCY, async (m) => {
     try {
-      out.push(
-        await genOneChecklist(projectPath, {
-          checklistId: `${baseId}__${slug(m.id)}`,
-          requirementName,
-          requirementPath,
-          rules,
-          module: m,
-          onProgress
-        })
-      )
+      const c = await genOneChecklist(projectPath, {
+        checklistId: `${baseId}__${slug(m.id)}`,
+        requirementName,
+        requirementPath,
+        rules,
+        module: m,
+        onProgress
+      })
+      done++
+      onProgress({
+        phase: 'checklist',
+        message: `완료 ${done}/${modules.length}: ${m.title}`,
+        fraction: done / modules.length
+      })
+      return c
     } catch (e) {
-      onProgress({ phase: 'checklist', message: `모듈 실패: ${m.title} — ${(e as Error).message}` })
+      done++
+      onProgress({
+        phase: 'checklist',
+        message: `모듈 실패 ${done}/${modules.length}: ${m.title} — ${(e as Error).message}`,
+        fraction: done / modules.length
+      })
+      return null
     }
-  }
+  })
+  const out = results.filter((c): c is Checklist => c !== null)
   if (out.length === 0) throw new Error('체크리스트가 하나도 생성되지 않았습니다.')
   return out
+}
+
+/** 동시 실행 상한을 둔 map (순서 보존) */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
 }
 
 /** 요구사항을 모듈 리스트로 분해 (실패 시 빈 배열) */
