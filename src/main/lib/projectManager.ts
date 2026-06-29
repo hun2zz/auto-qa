@@ -15,6 +15,7 @@ import {
   auditPrompt,
   authSetupPrompt,
   checklistPrompt,
+  codeTestsPrompt,
   decomposePrompt,
   testCoveragePrompt,
   testsPrompt,
@@ -495,6 +496,28 @@ export async function generateTests(
     'utf8'
   )
   return updated
+}
+
+/** [AI] 코드 기준 characterization(회귀+커버리지) 테스트 생성 → .qa/tests/code-*.spec.ts */
+export async function generateCodeTests(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<number> {
+  const rules = rulesHeader(await composeRules(projectPath, 'tests'))
+  onProgress({ phase: 'tests', message: '코드 분석 → 회귀·커버리지 테스트 생성 중…' })
+  const res = await runClaude({
+    projectPath,
+    prompt: rules + codeTestsPrompt({ testsDir: testsDir(projectPath) }),
+    allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+    phase: 'tests',
+    onProgress
+  })
+  if (!res.ok) throw new Error(res.error || '코드 기준 테스트 생성 실패')
+  const made = (await fs.readdir(testsDir(projectPath))).filter(
+    (f) => f.startsWith('code-') && f.endsWith('.spec.ts')
+  )
+  if (made.length === 0) throw new Error('코드 기준 테스트가 생성되지 않았습니다.')
+  return made.length
 }
 
 /** 모든 draft 체크리스트를 일괄 승인 */

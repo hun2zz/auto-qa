@@ -96,6 +96,7 @@ interface AppState {
 
   generateTests: (checklistId: string) => Promise<void>
   generateAllTests: () => Promise<void>
+  generateCodeTests: () => Promise<void>
 
   runTests: (only?: string) => Promise<void>
   loadLastReport: () => Promise<void>
@@ -381,6 +382,15 @@ export const useStore = create<AppState>((set, get) => {
         const checklists = await window.api.generateAllTests(project.path)
         set({ checklists })
         get().pushToast('success', '테스트 일괄 생성 완료')
+      })
+    },
+
+    generateCodeTests: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('generateCodeTests', async () => {
+        const n = await window.api.generateCodeTests(project.path)
+        get().pushToast('success', `코드 기준 테스트 ${n}개 파일 생성 (회귀·커버리지)`)
       })
     },
 

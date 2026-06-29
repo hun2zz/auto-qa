@@ -10,6 +10,7 @@ import {
   generateAllTests,
   generateAuthSetup,
   generateChecklist,
+  generateCodeTests,
   generateTests,
   getConfig,
   importRequirement,
@@ -113,6 +114,9 @@ export function registerIpc(): void {
     const config = await getConfig(projectPath)
     return generateAllTests(projectPath, config.baseURL, progressSender(e))
   })
+  ipcMain.handle(IPC.generateCodeTests, (e, projectPath: string) =>
+    generateCodeTests(projectPath, progressSender(e))
+  )
 
   ipcMain.handle(IPC.runTests, (e, projectPath: string, only?: string) =>
     runTests(projectPath, progressSender(e), only)

@@ -9,6 +9,8 @@ export function TestsPanel(): JSX.Element {
   const checklists = useStore((s) => s.checklists)
   const generateAllTests = useStore((s) => s.generateAllTests)
   const generatingAll = useStore((s) => !!s.busyKeys['generateAllTests'])
+  const generateCodeTests = useStore((s) => s.generateCodeTests)
+  const generatingCode = useStore((s) => !!s.busyKeys['generateCodeTests'])
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
 
@@ -19,19 +21,30 @@ export function TestsPanel(): JSX.Element {
       <PanelHeader
         step={3}
         title="테스트 생성"
-        desc="승인된 체크리스트를 Playwright 테스트 코드로 변환합니다."
+        desc="① 요구사항 기준(정확성) · ② 코드 기준(회귀·커버리지, 요구사항에 없는 것 포함) 두 종류를 만듭니다."
         action={
-          hasPending ? (
+          <div className="flex items-center gap-2">
             <Button
-              variant="primary"
-              icon={<SparkleIcon />}
-              loading={generatingAll}
+              variant="secondary"
+              icon={<FlaskIcon width={14} height={14} />}
+              loading={generatingCode}
               loadingText="생성 중…"
-              onClick={() => generateAllTests()}
+              onClick={() => generateCodeTests()}
             >
-              전체 테스트 생성
+              코드 기준 테스트 생성
             </Button>
-          ) : undefined
+            {hasPending && (
+              <Button
+                variant="primary"
+                icon={<SparkleIcon />}
+                loading={generatingAll}
+                loadingText="생성 중…"
+                onClick={() => generateAllTests()}
+              >
+                전체 테스트 생성
+              </Button>
+            )}
+          </div>
         }
       />
       <PanelBody>

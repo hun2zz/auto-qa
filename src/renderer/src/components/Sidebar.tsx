@@ -23,7 +23,7 @@ const STEPS: StepDef[] = [
   { id: 'checklists', index: 2, label: '체크리스트', icon: <ChecklistIcon /> },
   { id: 'tests', index: 3, label: '테스트 생성', icon: <FlaskIcon /> },
   { id: 'run', index: 4, label: '실행 & 리포트', icon: <PlayIcon /> },
-  { id: 'coverage', index: 5, label: '구현 감사', icon: <ChecklistIcon /> }
+  { id: 'coverage', index: 5, label: '코드 커버리지', icon: <FlaskIcon /> }
 ]
 
 type StepState = 'done' | 'active' | 'idle'
@@ -38,7 +38,7 @@ export function Sidebar(): JSX.Element {
   const requirements = useStore((s) => s.requirements)
   const checklists = useStore((s) => s.checklists)
   const lastReport = useStore((s) => s.lastReport)
-  const coverageReports = useStore((s) => s.coverageReports)
+  const codeCoverage = useStore((s) => s.codeCoverage)
 
   // 각 단계가 "완료"로 보일 조건 (가벼운 휴리스틱)
   const completion: Record<StepId, boolean> = {
@@ -46,7 +46,7 @@ export function Sidebar(): JSX.Element {
     checklists: checklists.some((c) => c.status === 'approved'),
     tests: checklists.some((c) => c.specPath),
     run: !!lastReport && !lastReport.fatalError,
-    coverage: coverageReports.length > 0
+    coverage: !!codeCoverage && !codeCoverage.fatalError
   }
 
   function stepState(id: StepId): StepState {

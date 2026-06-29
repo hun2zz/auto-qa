@@ -217,6 +217,7 @@ export const IPC = {
   approveAllChecklists: 'checklist:approveAll',
   generateTests: 'tests:generate',
   generateAllTests: 'tests:generateAll',
+  generateCodeTests: 'tests:generateCode',
   runTests: 'tests:run',
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
@@ -296,6 +297,8 @@ export interface AutoQaApi {
   generateTests(projectPath: string, checklistId: string): Promise<Checklist>
   /** [AI] 승인됐고 spec 없는 체크리스트들 → 테스트 일괄 생성(병렬) */
   generateAllTests(projectPath: string): Promise<Checklist[]>
+  /** [AI] 코드 기준 characterization(회귀+커버리지) 테스트 생성. 반환=생성 파일 수 */
+  generateCodeTests(projectPath: string): Promise<number>
 
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
   runTests(projectPath: string, only?: string): Promise<RunReport>

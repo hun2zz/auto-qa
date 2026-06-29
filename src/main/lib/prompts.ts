@@ -120,6 +120,30 @@ spec: null
 - 파일만 쓰고, 마지막 result 에는 무엇을 만들었는지 1~2줄 요약만.`
 }
 
+export function codeTestsPrompt(args: { testsDir: string }): string {
+  return `너는 Playwright characterization(특성) 테스트 전문가다. 코드를 분석해 '현재 동작을 고정'하는 회귀+커버리지 테스트를 만든다. (요구사항 정확성 판정이 아니라, 지금 동작을 박제해 회귀를 잡고 코드 커버리지를 채우는 용도)
+
+# 작업 (속도 우선 — 전수 탐색 말고 라우트 중심으로 빠르게)
+1. src/app 의 라우트(page 파일)를 중심으로 파악한다. 모든 컴포넌트를 깊게 파지 말 것 — 핵심 셀렉터만 빠르게 확인.
+2. .qa/requirements 와 .qa/intent 도 훑어 '요구사항에 적힌 흐름'을 파악한다.
+3. 주요 라우트/플로우마다 characterization 테스트를 만든다:
+   - 페이지가 에러 없이 렌더되는지, 핵심 요소가 노출되는지 등 '관찰 가능한 현재 동작'을 단언한다.
+   - 요구사항에 매핑되는 기능은 그 흐름대로.
+   - **요구사항에 없는 코드/기능도 커버**한다. 그런 test 의 제목 앞에 [undocumented] 를 붙인다.
+4. 로그인/시드데이터가 없어 결정적이지 않은 부분은 test.fixme() 로 두고 사유를 남긴다.
+
+# 출력 (${args.testsDir} 안에 code-<area>.spec.ts 파일들을 Write)
+- import { test, expect } from '@playwright/test'
+- page.goto('/path') 상대경로 사용 (baseURL 주입됨).
+- 셀렉터는 코드에서 실제로 확인. 확정 못 하면 핵심 요소 toBeVisible 수준으로.
+- 영역별로 파일 분리 (예: code-public.spec.ts, code-admin.spec.ts). **3개 이내 파일**로 빠르게.
+
+# 규칙
+- 이건 '회귀' 테스트다 — 현재 동작을 단언하되, 명백한 에러 상태(500 등)를 정답으로 박제하지 말 것.
+- 요구사항 기준 테스트(이미 .qa/tests 에 있는 것)와 '중복'되지 않게 — 보완·확장 위주.
+- 파일만 쓰고 result 에는 만든 파일 수·테스트 수·[undocumented] 개수만 요약.`
+}
+
 export function authSetupPrompt(args: {
   loginUrl: string
   setupOutPath: string
