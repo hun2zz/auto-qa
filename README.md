@@ -78,14 +78,17 @@
 
 서버+클라 실제 라인 커버리지를 [nextcov](https://github.com/stevez/nextcov)(V8 기반, Turbopack 호환)로 측정.
 
+**네가 생성한 테스트(`.qa/tests/*.spec.ts`)를 실제로 실행**해서, 그 테스트가 코드 라인 몇 %를 덮는지 측정한다. (= "내 테스트의 코드 커버리지")
+
 동작 (자동, 임시 패치는 백업·복원):
 1. 타겟에 `nextcov`/`@playwright/test` 없으면 설치
-2. `src/app` 라우트 발견 → `.qa/coverage/` 에 크롤 하니스 생성
+2. `.qa/coverage/` 에 nextcov 하니스 생성 (testDir → `.qa/tests`)
 3. `next.config`(소스맵) + `tsconfig`(.qa 빌드 제외) 임시 패치
 4. `next build` → `next start`(NODE_V8_COVERAGE + `--inspect`) — **next 를 직접 실행**(npm 래퍼 X)
-5. 라우트 크롤 → 서버(NODE_V8) + 클라(CDP) 수집 → 소스맵 remap → `coverage-final.json` → %
+5. 생성된 테스트 실행 → 서버(NODE_V8) + 클라(CDP) 수집 → 소스맵 remap → `coverage-final.json` → %
 6. 패치 복원
 
+> 커버리지가 낮으면 = **테스트가 아직 부족**하다는 정직한 신호 (모듈을 더 생성하고 auth/시드를 붙이면 올라감).
 > 제약: production 빌드라 수 분 소요. 서버 커버리지는 안정적, 클라이언트(브라우저) 수집은 보강 예정. 타겟 `next.config`/`tsconfig` 를 잠깐 수정(자동 복원)한다.
 
 ---

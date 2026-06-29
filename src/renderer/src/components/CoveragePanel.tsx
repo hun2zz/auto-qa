@@ -82,7 +82,7 @@ function CodeCoverageSection(): JSX.Element {
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
             <span>실행된 파일 {report.executedFiles}/{report.totalFiles}</span>
-            <span>크롤 라우트 {report.routes.length}개</span>
+            <span>실행한 테스트 spec {report.routes.length}개</span>
           </div>
           {report.warning && (
             <p className="mt-2 text-[11.5px] text-warn">⚠ {report.warning}</p>

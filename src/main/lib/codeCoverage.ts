@@ -35,11 +35,14 @@ export async function runCodeCoverage(
     // 1) 의존성 보장 (nextcov, @playwright/test)
     await ensureDeps(projectPath, onProgress)
 
-    // 2) 라우트 발견 (src/app 의 page 파일)
-    const routes = await discoverRoutes(projectPath)
-    onProgress({ phase: 'analyze', message: `커버리지 대상 라우트 ${routes.length}개 발견` })
+    // 2) 생성된 테스트 목록 (이 테스트들이 코드를 얼마나 덮나 측정)
+    const specs = await listSpecs(projectPath)
+    if (specs.length === 0) {
+      return fail('생성된 테스트(.qa/tests/*.spec.ts)가 없습니다. 먼저 테스트를 생성하세요.')
+    }
+    onProgress({ phase: 'analyze', message: `생성된 테스트 ${specs.length}개로 코드 커버리지 측정` })
 
-    // 3) 하니스 작성 (.qa/coverage)
+    // 3) 하니스 작성 (.qa/coverage) — 실제 .qa/tests 를 돌린다
     await writeHarness(projectPath)
 
     // 4) 임시 패치: 소스맵(next.config) + .qa 빌드 제외(tsconfig)
@@ -75,13 +78,12 @@ export async function runCodeCoverage(
     })
     server = await startServer(projectPath, baseURL, covOut, onProgress)
 
-    // 7) Playwright 크롤 (nextcov fixture → 서버+클라 수집)
-    onProgress({ phase: 'playwright', message: '라우트 크롤링 + 커버리지 수집 중…' })
+    // 7) 생성된 테스트 실행 (nextcov 가 서버+클라 커버리지 수집)
+    onProgress({ phase: 'playwright', message: '생성된 테스트 실행 + 커버리지 수집 중…' })
     const tool = toolPaths()
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       QA_BASE_URL: baseURL,
-      QA_COV_ROUTES: JSON.stringify(routes),
       NODE_PATH: tool.nodeModules + (process.env.NODE_PATH ? delimiter + process.env.NODE_PATH : ''),
       FORCE_COLOR: '0'
     }
@@ -92,10 +94,11 @@ export async function runCodeCoverage(
       env,
       onProgress
     )
-    if (pw.code !== 0) warning = (warning ? warning + ' / ' : '') + 'Playwright 크롤 일부 실패'
+    if (pw.code !== 0)
+      warning = (warning ? warning + ' / ' : '') + '일부 테스트 실패(커버리지는 계속 수집됨)'
 
     // 8) 리포트 파싱 + 저장
-    const report = await parseReport(projectPath, routes, warning)
+    const report = await parseReport(projectPath, specs, warning)
     await fs.mkdir(join(qaDir(projectPath), 'reports'), { recursive: true }).catch(() => {})
     await fs
       .writeFile(codeCoveragePath(projectPath), JSON.stringify(report, null, 2), 'utf8')
@@ -128,42 +131,18 @@ async function ensureDeps(projectPath: string, onProgress: (e: ProgressEvent) =>
   if (r.code !== 0) throw new Error(`의존성 설치 실패: ${need.join(', ')}`)
 }
 
-/** src/app 의 page 파일에서 정적 라우트 추출 (동적 [..] 제외, 최대 15개) */
-async function discoverRoutes(projectPath: string): Promise<string[]> {
-  const appDir = ['src/app', 'app'].map((d) => join(projectPath, d)).find((d) => existsSync(d))
-  if (!appDir) return ['/']
-  const routes = new Set<string>(['/'])
-  async function walk(dir: string, segs: string[]): Promise<void> {
-    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
-    for (const e of entries) {
-      if (e.isFile() && /^page\.(tsx|ts|jsx|js|mdx)$/.test(e.name)) {
-        const path = '/' + segs.filter(Boolean).join('/')
-        if (!path.includes('[')) routes.add(path === '' ? '/' : path)
-      } else if (e.isDirectory()) {
-        const name = e.name
-        if (name.startsWith('_') || name === 'api') continue
-        // (group) 세그먼트는 URL 에 안 들어감
-        const seg = name.startsWith('(') && name.endsWith(')') ? '' : name
-        if (name.includes('[')) continue // 동적 라우트 스킵
-        await walk(join(dir, name), [...segs, seg])
-      }
-    }
-  }
-  await walk(appDir, [])
-  // 얕은(상위) 라우트 우선 — 보통 public 메인 페이지. admin 류 깊은 경로는 뒤로.
-  return [...routes]
-    .sort((a, b) => {
-      const da = a === '/' ? 0 : a.split('/').length
-      const db = b === '/' ? 0 : b.split('/').length
-      return da - db || a.localeCompare(b)
-    })
-    .slice(0, 15)
+/** 생성된 테스트 spec 파일명 목록 (.qa/tests/*.spec.ts) */
+async function listSpecs(projectPath: string): Promise<string[]> {
+  const dir = join(qaDir(projectPath), 'tests')
+  if (!existsSync(dir)) return []
+  return (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts')).sort()
 }
 
 async function writeHarness(projectPath: string): Promise<void> {
   const dir = covDir(projectPath)
   await fs.mkdir(dir, { recursive: true })
 
+  // 실제 생성된 테스트(.qa/tests/*.spec.ts)를 nextcov 하니스로 실행한다.
   await fs.writeFile(
     join(dir, 'playwright.config.ts'),
     `import { defineConfig, devices } from '@playwright/test'
@@ -174,9 +153,9 @@ export const nextcov = {
   reporters: ['json', 'text-summary'], log: true
 }
 export default defineConfig({
-  testDir: '.', testMatch: /crawl\\.spec\\.ts/,
+  testDir: '../tests', testMatch: /\\.spec\\.ts$/,
   globalSetup: './global-setup.ts', globalTeardown: './global-teardown.ts',
-  reporter: [['list']], timeout: 60000,
+  reporter: [['list']], timeout: 60000, fullyParallel: true,
   use: { baseURL: process.env.QA_BASE_URL },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   // @ts-expect-error nextcov 확장
@@ -204,31 +183,6 @@ export default async function () {
   const c = await loadNextcovConfig(path.join(__dirname, 'playwright.config.ts'))
   await finalizeCoverage(c)
 }
-`,
-    'utf8'
-  )
-  await fs.writeFile(
-    join(dir, 'fixtures.ts'),
-    `import { test as base, expect } from '@playwright/test'
-import { collectClientCoverage } from 'nextcov/playwright'
-export const test = base.extend({
-  coverage: [async ({ page }, use, testInfo) => { await collectClientCoverage(page, testInfo, use) }, { scope: 'test', auto: true }]
-})
-export { expect }
-`,
-    'utf8'
-  )
-  await fs.writeFile(
-    join(dir, 'crawl.spec.ts'),
-    `import { test, expect } from './fixtures'
-const routes: string[] = JSON.parse(process.env.QA_COV_ROUTES || '["/"]')
-test('coverage crawl', async ({ page }) => {
-  for (const r of routes) {
-    await page.goto(r).catch(() => {})
-    await page.waitForLoadState('networkidle').catch(() => {})
-  }
-  expect(true).toBeTruthy()
-})
 `,
     'utf8'
   )
