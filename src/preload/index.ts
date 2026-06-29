@@ -29,7 +29,8 @@ const api: AutoQaApi = {
   runTests: (p, only) => ipcRenderer.invoke(IPC.runTests, p, only),
   getLastReport: (p) => ipcRenderer.invoke(IPC.getLastReport, p),
 
-  auditCoverage: (p, requirementName) => ipcRenderer.invoke(IPC.auditCoverage, p, requirementName),
+  auditCoverage: (p, requirementName, kind) =>
+    ipcRenderer.invoke(IPC.auditCoverage, p, requirementName, kind),
   getCoverageReports: (p) => ipcRenderer.invoke(IPC.getCoverageReports, p),
 
   getAuthStatus: (p) => ipcRenderer.invoke(IPC.getAuthStatus, p),

@@ -16,10 +16,11 @@ import {
   authSetupPrompt,
   checklistPrompt,
   decomposePrompt,
+  testCoveragePrompt,
   testsPrompt,
   rulesHeader
 } from './prompts'
-import type { CoverageItem, CoverageReport, CoverageStatus } from '@shared/types'
+import type { CoverageItem, CoverageKind, CoverageReport, CoverageStatus } from '@shared/types'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 import { composeRules, ensureRules } from './rules'
 
@@ -580,29 +581,35 @@ export async function generateAuthSetup(
 // QA 1: 구현 완료 커버리지 감사 (브라우저 불필요, 코드 근거 감사)
 // ----------------------------------------------------------------------------
 
-const coveragePath = (p: string, id: string): string =>
-  join(reportDir(p), `coverage-${id}.json`)
+const coveragePath = (p: string, kind: CoverageKind, id: string): string =>
+  join(reportDir(p), `coverage-${kind}-${id}.json`)
 
 export async function auditCoverage(
   projectPath: string,
   requirementName: string,
+  kind: CoverageKind,
   onProgress: (e: ProgressEvent) => void
 ): Promise<CoverageReport> {
   const id = slug(requirementName)
   const requirementPath = resolveRequirementPath(projectPath, requirementName)
-  const workOut = join(qaDir(projectPath), '.work', `coverage-${id}.json`)
+  const workOut = join(qaDir(projectPath), '.work', `coverage-${kind}-${id}.json`)
   await fs.mkdir(join(qaDir(projectPath), '.work'), { recursive: true })
   await fs.rm(workOut).catch(() => {})
 
-  onProgress({ phase: 'analyze', message: `구현 감사 중: ${requirementName}` })
+  const label = kind === 'test' ? '테스트 커버리지 감사' : '구현 감사'
+  onProgress({ phase: 'analyze', message: `${label} 중: ${requirementName}` })
+  const prompt =
+    kind === 'test'
+      ? testCoveragePrompt({ requirementPath, testsDir: testsDir(projectPath), outPath: workOut })
+      : auditPrompt({ requirementPath, outPath: workOut })
   const res = await runClaude({
     projectPath,
-    prompt: auditPrompt({ requirementPath, outPath: workOut }),
+    prompt,
     allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
     phase: 'analyze',
     onProgress
   })
-  if (!res.ok) throw new Error(res.error || '구현 감사 실패')
+  if (!res.ok) throw new Error(`${label} 실패: ${res.error || ''}`)
   if (!existsSync(workOut)) throw new Error('감사 결과 파일이 생성되지 않았습니다.')
 
   const parsed = JSON.parse(await fs.readFile(workOut, 'utf8'))
@@ -622,6 +629,7 @@ export async function auditCoverage(
   const missing = items.filter((i) => i.status === 'missing').length
   const total = items.length
   const report: CoverageReport = {
+    kind,
     requirementName,
     generatedAt: new Date().toISOString(),
     total,
@@ -631,10 +639,10 @@ export async function auditCoverage(
     completionRate: total ? (implemented + 0.5 * partial) / total : 0,
     items
   }
-  await fs.writeFile(coveragePath(projectPath, id), JSON.stringify(report, null, 2), 'utf8')
+  await fs.writeFile(coveragePath(projectPath, kind, id), JSON.stringify(report, null, 2), 'utf8')
   onProgress({
     phase: 'analyze',
-    message: `감사 완료 — 완료율 ${Math.round(report.completionRate * 100)}% (미구현 ${missing})`,
+    message: `${label} 완료 — ${Math.round(report.completionRate * 100)}% (gap ${missing + partial})`,
     done: true
   })
   return report

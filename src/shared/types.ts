@@ -75,7 +75,12 @@ export interface CoverageItem {
   note?: string
 }
 
+/** 커버리지 감사 종류: 구현 여부 vs 테스트 검증 여부 */
+export type CoverageKind = 'implementation' | 'test'
+
 export interface CoverageReport {
+  /** implementation = 구현됐나, test = 테스트로 검증되나 */
+  kind: CoverageKind
   requirementName: string
   generatedAt: string
   total: number
@@ -266,8 +271,12 @@ export interface AutoQaApi {
   runTests(projectPath: string, only?: string): Promise<RunReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
 
-  /** [AI] 요구사항 항목별 구현 여부 감사 → 완료율 + gap 리포트 (QA 1, 브라우저 불필요) */
-  auditCoverage(projectPath: string, requirementName: string): Promise<CoverageReport>
+  /** [AI] 요구사항 항목별 구현/테스트검증 여부 감사 → 완료율 + gap 리포트 (브라우저 불필요) */
+  auditCoverage(
+    projectPath: string,
+    requirementName: string,
+    kind: CoverageKind
+  ): Promise<CoverageReport>
   /** 저장된 커버리지 리포트들 */
   getCoverageReports(projectPath: string): Promise<CoverageReport[]>
 

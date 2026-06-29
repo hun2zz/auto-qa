@@ -38,6 +38,29 @@ export function auditPrompt(args: { requirementPath: string; outPath: string }):
 - 확신이 없으면 partial 로 두고 note 에 사유를 남긴다.`
 }
 
+export function testCoveragePrompt(args: {
+  requirementPath: string
+  testsDir: string
+  outPath: string
+}): string {
+  return `너는 시니어 QA 감사관이다. 요구사항의 각 항목이 '테스트로 검증되고 있는지' 감사한다. (구현 여부가 아니라 '테스트 존재' 여부)
+
+# 작업
+1. 요구사항 문서를 읽는다(Read): ${args.requirementPath}
+2. 요구사항을 '개별 검증 항목'으로 빠짐없이 나눈다.
+3. 생성된 테스트들을 읽는다: ${args.testsDir} 의 *.spec.ts 파일들(Read/Grep).
+4. 각 요구사항 항목마다 '그것을 검증하는 test 가 있는지' 판정한다:
+   - implemented(=검증됨): 그 항목을 직접 검증하는 test 가 존재하고 실제 단언(expect)이 있음
+   - partial(=부분): 관련 test 는 있으나 일부만 검증 / test.fixme 로 비활성 / 단언이 약함
+   - missing(=미검증): 해당 항목을 검증하는 test 가 없음
+5. evidence 에는 근거가 된 'spec 파일:test 제목'을 적는다(없으면 사유).
+
+# 출력 (반드시 이 경로에 JSON 을 Write)
+경로: ${args.outPath}
+형식: { "items": [ { "requirement": "<항목>", "status": "implemented|partial|missing", "evidence": "<spec파일:test 또는 사유>", "note": "<선택>" } ] }
+- 파일만 쓰고 result 에는 항목 수만 요약. 추측 금지 — 실제 spec 내용으로 판정.`
+}
+
 export function decomposePrompt(args: { requirementPath: string; outPath: string }): string {
   return `너는 시니어 QA 리드다. 거대한 요구사항을 '독립적으로 테스트 가능한 기능 모듈'로 빠짐없이 분해한다.
 

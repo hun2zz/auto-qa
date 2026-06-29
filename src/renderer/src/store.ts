@@ -10,7 +10,8 @@ import type {
   AuthStatus,
   HealResult,
   RuleFile,
-  CoverageReport
+  CoverageReport,
+  CoverageKind
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -96,7 +97,7 @@ interface AppState {
 
   runTests: (only?: string) => Promise<void>
   loadLastReport: () => Promise<void>
-  auditCoverage: (requirementName: string) => Promise<void>
+  auditCoverage: (requirementName: string, kind: CoverageKind) => Promise<void>
   loadCoverageReports: () => Promise<void>
 
   loadAuthStatus: () => Promise<void>
@@ -407,18 +408,21 @@ export const useStore = create<AppState>((set, get) => {
       set({ coverageReports })
     },
 
-    auditCoverage: async (requirementName) => {
+    auditCoverage: async (requirementName, kind) => {
       const { project } = get()
       if (!project) return
-      await withBusy(`audit:${requirementName}`, async () => {
-        const report = await window.api.auditCoverage(project.path, requirementName)
+      await withBusy(`audit:${kind}:${requirementName}`, async () => {
+        const report = await window.api.auditCoverage(project.path, requirementName, kind)
         set((s) => ({
           coverageReports: [
-            ...s.coverageReports.filter((r) => r.requirementName !== requirementName),
+            ...s.coverageReports.filter(
+              (r) => !(r.requirementName === requirementName && r.kind === kind)
+            ),
             report
           ]
         }))
-        get().pushToast('success', `구현 감사 완료 — 완료율 ${Math.round(report.completionRate * 100)}%`)
+        const label = kind === 'test' ? '테스트 커버리지' : '구현 감사'
+        get().pushToast('success', `${label} 완료 — ${Math.round(report.completionRate * 100)}%`)
       })
     },
 

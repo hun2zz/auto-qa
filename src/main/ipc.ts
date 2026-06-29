@@ -117,8 +117,10 @@ export function registerIpc(): void {
     runTests(projectPath, progressSender(e), only)
   )
 
-  ipcMain.handle(IPC.auditCoverage, (e, projectPath: string, requirementName: string) =>
-    auditCoverage(projectPath, requirementName, progressSender(e))
+  ipcMain.handle(
+    IPC.auditCoverage,
+    (e, projectPath: string, requirementName: string, kind: 'implementation' | 'test') =>
+      auditCoverage(projectPath, requirementName, kind, progressSender(e))
   )
   ipcMain.handle(IPC.getCoverageReports, (_e, projectPath: string) =>
     getCoverageReports(projectPath)
