@@ -5,6 +5,7 @@ import { RequirementsPanel } from './components/RequirementsPanel'
 import { ChecklistsPanel } from './components/ChecklistsPanel'
 import { TestsPanel } from './components/TestsPanel'
 import { RunPanel } from './components/RunPanel'
+import { CoveragePanel } from './components/CoveragePanel'
 import { ProgressConsole } from './components/ProgressConsole'
 import { ConfigModal } from './components/ConfigModal'
 import { Toasts } from './components/Toasts'
@@ -46,6 +47,7 @@ export default function App(): JSX.Element {
               {activeStep === 'checklists' && <ChecklistsPanel />}
               {activeStep === 'tests' && <TestsPanel />}
               {activeStep === 'run' && <RunPanel />}
+              {activeStep === 'coverage' && <CoveragePanel />}
             </div>
             <ProgressConsole />
           </>

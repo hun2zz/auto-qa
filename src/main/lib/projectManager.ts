@@ -11,7 +11,15 @@ import {
   type RequirementFile
 } from '@shared/types'
 import { runClaude } from './claudeRunner'
-import { authSetupPrompt, checklistPrompt, decomposePrompt, testsPrompt, rulesHeader } from './prompts'
+import {
+  auditPrompt,
+  authSetupPrompt,
+  checklistPrompt,
+  decomposePrompt,
+  testsPrompt,
+  rulesHeader
+} from './prompts'
+import type { CoverageItem, CoverageReport, CoverageStatus } from '@shared/types'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 import { composeRules, ensureRules } from './rules'
 
@@ -566,6 +574,92 @@ export async function generateAuthSetup(
   })
   if (!res.ok) throw new Error(res.error || '로그인 셋업 생성 실패')
   if (!existsSync(setupOutPath)) throw new Error('auth.setup.ts 가 생성되지 않았습니다.')
+}
+
+// ----------------------------------------------------------------------------
+// QA 1: 구현 완료 커버리지 감사 (브라우저 불필요, 코드 근거 감사)
+// ----------------------------------------------------------------------------
+
+const coveragePath = (p: string, id: string): string =>
+  join(reportDir(p), `coverage-${id}.json`)
+
+export async function auditCoverage(
+  projectPath: string,
+  requirementName: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<CoverageReport> {
+  const id = slug(requirementName)
+  const requirementPath = resolveRequirementPath(projectPath, requirementName)
+  const workOut = join(qaDir(projectPath), '.work', `coverage-${id}.json`)
+  await fs.mkdir(join(qaDir(projectPath), '.work'), { recursive: true })
+  await fs.rm(workOut).catch(() => {})
+
+  onProgress({ phase: 'analyze', message: `구현 감사 중: ${requirementName}` })
+  const res = await runClaude({
+    projectPath,
+    prompt: auditPrompt({ requirementPath, outPath: workOut }),
+    allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+    phase: 'analyze',
+    onProgress
+  })
+  if (!res.ok) throw new Error(res.error || '구현 감사 실패')
+  if (!existsSync(workOut)) throw new Error('감사 결과 파일이 생성되지 않았습니다.')
+
+  const parsed = JSON.parse(await fs.readFile(workOut, 'utf8'))
+  const rawItems: unknown[] = Array.isArray(parsed) ? parsed : (parsed?.items ?? [])
+  const items: CoverageItem[] = rawItems.map((r) => {
+    const o = r as Record<string, unknown>
+    const status = normalizeCoverage(String(o?.status ?? ''))
+    return {
+      requirement: String(o?.requirement ?? '(미상)'),
+      status,
+      evidence: String(o?.evidence ?? ''),
+      note: o?.note ? String(o.note) : undefined
+    }
+  })
+  const implemented = items.filter((i) => i.status === 'implemented').length
+  const partial = items.filter((i) => i.status === 'partial').length
+  const missing = items.filter((i) => i.status === 'missing').length
+  const total = items.length
+  const report: CoverageReport = {
+    requirementName,
+    generatedAt: new Date().toISOString(),
+    total,
+    implemented,
+    partial,
+    missing,
+    completionRate: total ? (implemented + 0.5 * partial) / total : 0,
+    items
+  }
+  await fs.writeFile(coveragePath(projectPath, id), JSON.stringify(report, null, 2), 'utf8')
+  onProgress({
+    phase: 'analyze',
+    message: `감사 완료 — 완료율 ${Math.round(report.completionRate * 100)}% (미구현 ${missing})`,
+    done: true
+  })
+  return report
+}
+
+function normalizeCoverage(s: string): CoverageStatus {
+  const v = s.toLowerCase()
+  if (v.startsWith('impl')) return 'implemented'
+  if (v.startsWith('part')) return 'partial'
+  return 'missing'
+}
+
+export async function getCoverageReports(projectPath: string): Promise<CoverageReport[]> {
+  const dir = reportDir(projectPath)
+  if (!existsSync(dir)) return []
+  const files = (await fs.readdir(dir)).filter((f) => f.startsWith('coverage-') && f.endsWith('.json'))
+  const out: CoverageReport[] = []
+  for (const f of files.sort()) {
+    try {
+      out.push(JSON.parse(await fs.readFile(join(dir, f), 'utf8')))
+    } catch {
+      /* skip */
+    }
+  }
+  return out
 }
 
 // ----------------------------------------------------------------------------

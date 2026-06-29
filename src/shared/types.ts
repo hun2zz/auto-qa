@@ -60,6 +60,33 @@ export interface RuleFile {
   content: string
 }
 
+// ----------------------------------------------------------------------------
+// QA 1: 구현 완료 커버리지 감사 (요구사항이 실제로 구현됐는지)
+// ----------------------------------------------------------------------------
+
+export type CoverageStatus = 'implemented' | 'partial' | 'missing'
+
+export interface CoverageItem {
+  /** 요구사항 항목 설명 */
+  requirement: string
+  status: CoverageStatus
+  /** 판정 근거 (파일 경로/심볼 또는 사유) */
+  evidence: string
+  note?: string
+}
+
+export interface CoverageReport {
+  requirementName: string
+  generatedAt: string
+  total: number
+  implemented: number
+  partial: number
+  missing: number
+  /** 완료율 0~1 = (구현 + 0.5*부분) / 전체 */
+  completionRate: number
+  items: CoverageItem[]
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -159,6 +186,8 @@ export const IPC = {
   generateAllTests: 'tests:generateAll',
   runTests: 'tests:run',
   getLastReport: 'report:last',
+  auditCoverage: 'coverage:audit',
+  getCoverageReports: 'coverage:list',
   // auth
   getAuthStatus: 'auth:status',
   setAuthSecret: 'auth:setSecret',
@@ -236,6 +265,11 @@ export interface AutoQaApi {
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
   runTests(projectPath: string, only?: string): Promise<RunReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
+
+  /** [AI] 요구사항 항목별 구현 여부 감사 → 완료율 + gap 리포트 (QA 1, 브라우저 불필요) */
+  auditCoverage(projectPath: string, requirementName: string): Promise<CoverageReport>
+  /** 저장된 커버리지 리포트들 */
+  getCoverageReports(projectPath: string): Promise<CoverageReport[]>
 
   // --- 로그인(auth) ---
   getAuthStatus(projectPath: string): Promise<AuthStatus>

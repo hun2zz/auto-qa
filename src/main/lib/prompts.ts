@@ -16,6 +16,28 @@ ${body}
 }
 
 
+export function auditPrompt(args: { requirementPath: string; outPath: string }): string {
+  return `너는 시니어 QA 감사관이다. 요구사항의 각 기능이 '실제로 구현됐는지' 코드를 근거로 감사한다. (E2E 실행이 아니라 구현 존재 여부 감사)
+
+# 작업
+1. 요구사항 문서를 읽는다(Read): ${args.requirementPath} (PDF/이미지면 내용 파악)
+2. 요구사항을 '개별 기능 항목'으로 빠짐없이 나눈다(압축 금지).
+3. 각 항목마다 프로젝트 코드를 Read/Grep/Glob 해서 구현 여부를 판정한다:
+   - implemented: 해당 라우트/페이지/컴포넌트/API/로직이 실제로 존재하고 동작 형태를 갖춤
+   - partial: 일부만 있음(껍데기/TODO/미완성/일부 케이스 누락)
+   - missing: 코드에 흔적이 없음
+4. evidence 에는 판정 근거가 된 '파일 경로/심볼'을 구체적으로 적는다(없으면 사유). 추측 금지 — 코드에서 확인한 것만.
+
+# 출력 (반드시 이 경로에 JSON 을 Write)
+경로: ${args.outPath}
+형식: { "items": [ { "requirement": "<항목 설명>", "status": "implemented|partial|missing", "evidence": "<파일경로/심볼 또는 사유>", "note": "<선택>" } ] }
+- 항목은 가능한 한 잘게. 파일만 쓰고 result 에는 항목 수만 요약.
+
+# 규칙
+- 'implemented' 로 판정하려면 반드시 실제 코드 근거가 있어야 한다(stub/주석만 있으면 partial 또는 missing).
+- 확신이 없으면 partial 로 두고 note 에 사유를 남긴다.`
+}
+
 export function decomposePrompt(args: { requirementPath: string; outPath: string }): string {
   return `너는 시니어 QA 리드다. 거대한 요구사항을 '독립적으로 테스트 가능한 기능 모듈'로 빠짐없이 분해한다.
 

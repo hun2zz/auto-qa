@@ -4,7 +4,9 @@ import {
   addRequirementText,
   approveAllChecklists,
   approveChecklist,
+  auditCoverage,
   connectProject,
+  getCoverageReports,
   generateAllTests,
   generateAuthSetup,
   generateChecklist,
@@ -113,6 +115,13 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.runTests, (e, projectPath: string, only?: string) =>
     runTests(projectPath, progressSender(e), only)
+  )
+
+  ipcMain.handle(IPC.auditCoverage, (e, projectPath: string, requirementName: string) =>
+    auditCoverage(projectPath, requirementName, progressSender(e))
+  )
+  ipcMain.handle(IPC.getCoverageReports, (_e, projectPath: string) =>
+    getCoverageReports(projectPath)
   )
   ipcMain.handle(IPC.getLastReport, (_e, projectPath: string) => getLastReport(projectPath))
 

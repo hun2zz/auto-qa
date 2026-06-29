@@ -9,12 +9,13 @@ import type {
   ProgressPhase,
   AuthStatus,
   HealResult,
-  RuleFile
+  RuleFile,
+  CoverageReport
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
 /** 파이프라인 단계 식별자 */
-export type StepId = 'requirements' | 'checklists' | 'tests' | 'run'
+export type StepId = 'requirements' | 'checklists' | 'tests' | 'run' | 'coverage'
 
 /** 콘솔에 쌓이는 진행 로그 한 줄 */
 export interface LogLine {
@@ -47,6 +48,7 @@ interface AppState {
   authStatus: AuthStatus | null
   lastHeal: HealResult | null
   rules: RuleFile[]
+  coverageReports: CoverageReport[]
 
   // ── UI 상태 ────────────────────────────────────────────────────
   activeStep: StepId
@@ -94,6 +96,8 @@ interface AppState {
 
   runTests: (only?: string) => Promise<void>
   loadLastReport: () => Promise<void>
+  auditCoverage: (requirementName: string) => Promise<void>
+  loadCoverageReports: () => Promise<void>
 
   loadAuthStatus: () => Promise<void>
   setAuthSecret: (password: string) => Promise<void>
@@ -137,6 +141,7 @@ export const useStore = create<AppState>((set, get) => {
     authStatus: null,
     lastHeal: null,
     rules: [],
+    coverageReports: [],
 
     activeStep: 'requirements',
     configOpen: false,
@@ -229,7 +234,8 @@ export const useStore = create<AppState>((set, get) => {
         get().refreshRequirements(),
         get().refreshChecklists(),
         get().loadLastReport(),
-        get().loadAuthStatus()
+        get().loadAuthStatus(),
+        get().loadCoverageReports()
       ])
     },
 
@@ -392,6 +398,28 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       const lastReport = await window.api.getLastReport(project.path).catch(() => null)
       set({ lastReport })
+    },
+
+    loadCoverageReports: async () => {
+      const { project } = get()
+      if (!project) return
+      const coverageReports = await window.api.getCoverageReports(project.path).catch(() => [])
+      set({ coverageReports })
+    },
+
+    auditCoverage: async (requirementName) => {
+      const { project } = get()
+      if (!project) return
+      await withBusy(`audit:${requirementName}`, async () => {
+        const report = await window.api.auditCoverage(project.path, requirementName)
+        set((s) => ({
+          coverageReports: [
+            ...s.coverageReports.filter((r) => r.requirementName !== requirementName),
+            report
+          ]
+        }))
+        get().pushToast('success', `구현 감사 완료 — 완료율 ${Math.round(report.completionRate * 100)}%`)
+      })
     },
 
     loadAuthStatus: async () => {
