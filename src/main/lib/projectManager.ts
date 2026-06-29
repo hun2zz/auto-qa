@@ -21,6 +21,8 @@ import { composeRules, ensureRules } from './rules'
 const QA = '.qa'
 const qaDir = (p: string): string => join(p, QA)
 const reqDir = (p: string): string => join(p, QA, 'requirements')
+// /qa-capture 스킬이 개발 중 캡처한 '의도 원장'. 요구사항과 동일하게 취급한다.
+const intentDir = (p: string): string => join(p, QA, 'intent')
 const checklistDir = (p: string): string => join(p, QA, 'checklists')
 const testsDir = (p: string): string => join(p, QA, 'tests')
 const configPath = (p: string): string => join(p, QA, 'config.json')
@@ -47,6 +49,7 @@ export async function connectProject(projectPath: string): Promise<ProjectInfo> 
 
 async function ensureScaffold(path: string): Promise<void> {
   await fs.mkdir(reqDir(path), { recursive: true })
+  await fs.mkdir(intentDir(path), { recursive: true })
   await fs.mkdir(checklistDir(path), { recursive: true })
   await fs.mkdir(testsDir(path), { recursive: true })
   await fs.mkdir(reportDir(path), { recursive: true })
@@ -129,17 +132,34 @@ export async function saveConfig(projectPath: string, config: QaConfig): Promise
 // ----------------------------------------------------------------------------
 
 export async function listRequirements(projectPath: string): Promise<RequirementFile[]> {
-  const dir = reqDir(projectPath)
-  if (!existsSync(dir)) return []
-  const files = await fs.readdir(dir)
   const out: RequirementFile[] = []
-  for (const name of files.sort()) {
-    if (name.startsWith('.')) continue
-    const path = join(dir, name)
-    const text = await fs.readFile(path, 'utf8').catch(() => '')
-    out.push({ name, path, preview: text.slice(0, 280) })
+  // 업로드 요구사항 + /qa-capture 의도 원장(.qa/intent) 둘 다 요구사항으로 노출
+  for (const dir of [reqDir(projectPath), intentDir(projectPath)]) {
+    if (!existsSync(dir)) continue
+    const isIntent = dir === intentDir(projectPath)
+    for (const name of (await fs.readdir(dir)).sort()) {
+      if (name.startsWith('.')) continue
+      const path = join(dir, name)
+      const stat = await fs.stat(path).catch(() => null)
+      if (!stat?.isFile()) continue
+      const text = isTextLike(name) ? await fs.readFile(path, 'utf8').catch(() => '') : ''
+      out.push({
+        name,
+        path,
+        preview: (isIntent ? '[의도 원장] ' : '') + (text.slice(0, 280) || '(미리보기 없음)')
+      })
+    }
   }
   return out
+}
+
+/** 요구사항 파일명 → 실제 경로 (requirements/intent 양쪽에서 탐색) */
+function resolveRequirementPath(projectPath: string, name: string): string {
+  const r = join(reqDir(projectPath), name)
+  if (existsSync(r)) return r
+  const i = join(intentDir(projectPath), name)
+  if (existsSync(i)) return i
+  return r
 }
 
 /** 외부 파일을 .qa/requirements/ 로 복사 (md/txt/pdf/이미지 등 — AI 단계에서 Claude 가 직접 읽음) */
@@ -248,7 +268,7 @@ export async function generateChecklist(
   onProgress: (e: ProgressEvent) => void
 ): Promise<Checklist[]> {
   const baseId = slug(requirementName)
-  const requirementPath = join(reqDir(projectPath), requirementName)
+  const requirementPath = resolveRequirementPath(projectPath, requirementName)
   const rules = rulesHeader(await composeRules(projectPath, 'checklist'))
 
   // 1) 분해
