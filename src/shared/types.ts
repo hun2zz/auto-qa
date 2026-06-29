@@ -150,7 +150,9 @@ export const IPC = {
   listChecklists: 'checklist:list',
   saveChecklist: 'checklist:save',
   approveChecklist: 'checklist:approve',
+  approveAllChecklists: 'checklist:approveAll',
   generateTests: 'tests:generate',
+  generateAllTests: 'tests:generateAll',
   runTests: 'tests:run',
   getLastReport: 'report:last',
   // auth
@@ -219,12 +221,16 @@ export interface AutoQaApi {
   listChecklists(projectPath: string): Promise<Checklist[]>
   saveChecklist(projectPath: string, id: string, markdown: string): Promise<void>
   approveChecklist(projectPath: string, id: string): Promise<Checklist>
+  /** 모든 draft 체크리스트 일괄 승인 */
+  approveAllChecklists(projectPath: string): Promise<Checklist[]>
 
   /** [AI] 승인된 체크리스트 → Playwright 테스트 코드 생성 */
   generateTests(projectPath: string, checklistId: string): Promise<Checklist>
+  /** [AI] 승인됐고 spec 없는 체크리스트들 → 테스트 일괄 생성(병렬) */
+  generateAllTests(projectPath: string): Promise<Checklist[]>
 
-  /** [결정적] dev 서버 구동 → playwright 실행 → 리포트 */
-  runTests(projectPath: string): Promise<RunReport>
+  /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
+  runTests(projectPath: string, only?: string): Promise<RunReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
 
   // --- 로그인(auth) ---

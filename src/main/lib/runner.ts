@@ -13,13 +13,14 @@ import { healPrompt, rulesHeader } from './prompts'
 /** [결정적] dev 서버 구동 → Playwright 실행 → 리포트 저장. AI 미사용. */
 export async function runTests(
   projectPath: string,
-  onProgress: (e: ProgressEvent) => void
+  onProgress: (e: ProgressEvent) => void,
+  only?: string
 ): Promise<RunReport> {
   let server: DevServerHandle | null = null
   try {
     server = await bootDevServer(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
-    const stamped = await runAndStamp(projectPath, { extraEnv, onProgress })
+    const stamped = await runAndStamp(projectPath, { extraEnv, onProgress, only })
     await persist(projectPath, stamped)
     announce(stamped, onProgress)
     return stamped
@@ -124,14 +125,15 @@ async function bootDevServer(
 
 async function runAndStamp(
   projectPath: string,
-  opts: { extraEnv: Record<string, string>; onProgress: (e: ProgressEvent) => void }
+  opts: { extraEnv: Record<string, string>; onProgress: (e: ProgressEvent) => void; only?: string }
 ): Promise<RunReport> {
   // 실행 전 config 를 최신 템플릿으로 보장 (구버전/손상 방지)
   await writePlaywrightConfig(projectPath)
   const report = await runPlaywright({
     projectPath,
     onProgress: opts.onProgress,
-    extraEnv: opts.extraEnv
+    extraEnv: opts.extraEnv,
+    only: opts.only
   })
   return { ...report, startedAt: report.startedAt || new Date().toISOString() }
 }

@@ -9,9 +9,10 @@ import { ChecklistIcon, SparkleIcon, CheckIcon } from './icons'
 export function ChecklistsPanel(): JSX.Element {
   const requirements = useStore((s) => s.requirements)
   const checklists = useStore((s) => s.checklists)
+  const approveAllChecklists = useStore((s) => s.approveAllChecklists)
+  const approvingAll = useStore((s) => !!s.busyKeys['approveAll'])
 
-  const byRequirement = new Map<string, Checklist>()
-  for (const c of checklists) byRequirement.set(c.sourceRequirement, c)
+  const hasDraft = checklists.some((c) => c.status !== 'approved')
 
   return (
     <>
@@ -19,6 +20,19 @@ export function ChecklistsPanel(): JSX.Element {
         step={2}
         title="체크리스트"
         desc="요구사항을 Given / When / Then 합격기준으로 변환하고 검토·승인합니다."
+        action={
+          hasDraft ? (
+            <Button
+              variant="success"
+              icon={<CheckIcon width={14} height={14} strokeWidth={2.5} />}
+              loading={approvingAll}
+              loadingText="승인 중…"
+              onClick={() => approveAllChecklists()}
+            >
+              전체 승인
+            </Button>
+          ) : undefined
+        }
       />
       <PanelBody>
         {requirements.length === 0 ? (
@@ -28,12 +42,12 @@ export function ChecklistsPanel(): JSX.Element {
             desc="1단계에서 요구사항 문서를 업로드하면 여기서 체크리스트를 생성할 수 있습니다."
           />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {requirements.map((req) => (
-              <ChecklistRow
+              <RequirementGroup
                 key={req.path}
                 requirement={req}
-                checklist={byRequirement.get(req.name)}
+                checklists={checklists.filter((c) => c.sourceRequirement === req.name)}
               />
             ))}
           </div>
@@ -43,37 +57,47 @@ export function ChecklistsPanel(): JSX.Element {
   )
 }
 
-function ChecklistRow({
+function RequirementGroup({
   requirement,
-  checklist
+  checklists
 }: {
   requirement: RequirementFile
-  checklist?: Checklist
+  checklists: Checklist[]
 }): JSX.Element {
   const generateChecklist = useStore((s) => s.generateChecklist)
   const generating = useStore((s) => !!s.busyKeys[`checklist:${requirement.name}`])
 
-  if (!checklist) {
-    return (
+  return (
+    <section className="space-y-3">
       <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-5">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-medium text-text">{requirement.name}</h3>
-          <p className="mt-0.5 text-xs text-muted">아직 체크리스트가 없습니다.</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {checklists.length > 0
+              ? `${checklists.length}개의 모듈 체크리스트`
+              : '요구사항을 모듈 단위 체크리스트로 분해합니다 (여러 개가 생성될 수 있습니다).'}
+          </p>
         </div>
         <Button
-          variant="primary"
+          variant={checklists.length > 0 ? 'secondary' : 'primary'}
           icon={<SparkleIcon />}
           loading={generating}
-          loadingText="AI 생성 중…"
+          loadingText="생성 중…"
           onClick={() => generateChecklist(requirement.name)}
         >
-          체크리스트 생성
+          {checklists.length > 0 ? '다시 생성' : '체크리스트 생성'}
         </Button>
       </div>
-    )
-  }
 
-  return <ChecklistCard checklist={checklist} />
+      {checklists.length > 0 && (
+        <div className="space-y-3 pl-4">
+          {checklists.map((c) => (
+            <ChecklistCard key={c.id} checklist={c} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
 }
 
 function ChecklistCard({ checklist }: { checklist: Checklist }): JSX.Element {

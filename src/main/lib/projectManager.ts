@@ -470,6 +470,52 @@ export async function generateTests(
   return updated
 }
 
+/** 모든 draft 체크리스트를 일괄 승인 */
+export async function approveAllChecklists(projectPath: string): Promise<Checklist[]> {
+  const all = await listChecklists(projectPath)
+  for (const c of all) {
+    if (c.status !== 'approved') {
+      await fs.writeFile(
+        join(checklistDir(projectPath), `${c.id}.md`),
+        serializeChecklist({ ...c, status: 'approved' }),
+        'utf8'
+      )
+    }
+  }
+  return listChecklists(projectPath)
+}
+
+/** [AI] 승인됐지만 spec 없는 체크리스트들 → 테스트 일괄 생성 (병렬) */
+export async function generateAllTests(
+  projectPath: string,
+  baseURL: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<Checklist[]> {
+  const all = await listChecklists(projectPath)
+  const targets = all.filter((c) => c.status === 'approved' && !c.specPath)
+  if (targets.length === 0) {
+    onProgress({ phase: 'tests', message: '생성할 대상이 없습니다 (승인됐고 spec 없는 체크리스트 없음).' })
+    return all
+  }
+  onProgress({ phase: 'tests', message: `${targets.length}개 테스트 생성 (동시 4개)` })
+  let done = 0
+  await mapLimit(targets, 4, async (c) => {
+    try {
+      await generateTests(projectPath, c.id, baseURL, onProgress)
+    } catch (e) {
+      onProgress({ phase: 'tests', message: `실패: ${c.title} — ${(e as Error).message}` })
+    } finally {
+      done++
+      onProgress({
+        phase: 'tests',
+        message: `완료 ${done}/${targets.length}`,
+        fraction: done / targets.length
+      })
+    }
+  })
+  return listChecklists(projectPath)
+}
+
 // ----------------------------------------------------------------------------
 // 로그인 셋업 생성 (AI)
 // ----------------------------------------------------------------------------

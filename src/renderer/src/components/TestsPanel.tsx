@@ -3,12 +3,16 @@ import type { Checklist } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
-import { FlaskIcon, SparkleIcon, CheckIcon } from './icons'
+import { FlaskIcon, SparkleIcon, CheckIcon, PlayIcon } from './icons'
 
 export function TestsPanel(): JSX.Element {
   const checklists = useStore((s) => s.checklists)
+  const generateAllTests = useStore((s) => s.generateAllTests)
+  const generatingAll = useStore((s) => !!s.busyKeys['generateAllTests'])
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
+
+  const hasPending = approved.some((c) => !c.specPath)
 
   return (
     <>
@@ -16,6 +20,19 @@ export function TestsPanel(): JSX.Element {
         step={3}
         title="테스트 생성"
         desc="승인된 체크리스트를 Playwright 테스트 코드로 변환합니다."
+        action={
+          hasPending ? (
+            <Button
+              variant="primary"
+              icon={<SparkleIcon />}
+              loading={generatingAll}
+              loadingText="생성 중…"
+              onClick={() => generateAllTests()}
+            >
+              전체 테스트 생성
+            </Button>
+          ) : undefined
+        }
       />
       <PanelBody>
         {checklists.length === 0 ? (
@@ -66,7 +83,9 @@ export function TestsPanel(): JSX.Element {
 
 function TestRow({ checklist }: { checklist: Checklist }): JSX.Element {
   const generateTests = useStore((s) => s.generateTests)
+  const runTests = useStore((s) => s.runTests)
   const generating = useStore((s) => !!s.busyKeys[`tests:${checklist.id}`])
+  const running = useStore((s) => !!s.busyKeys['runTests'])
   const hasSpec = !!checklist.specPath
 
   return (
@@ -105,15 +124,28 @@ function TestRow({ checklist }: { checklist: Checklist }): JSX.Element {
           )}
         </div>
       </div>
-      <Button
-        variant={hasSpec ? 'secondary' : 'primary'}
-        icon={<SparkleIcon />}
-        loading={generating}
-        loadingText="AI 생성 중…"
-        onClick={() => generateTests(checklist.id)}
-      >
-        {hasSpec ? '다시 생성' : '테스트 생성'}
-      </Button>
+      <div className="flex shrink-0 items-center gap-2">
+        {hasSpec && checklist.specPath && (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<PlayIcon width={13} height={13} />}
+            disabled={running}
+            onClick={() => runTests(checklist.specPath ?? undefined)}
+          >
+            이것만 실행
+          </Button>
+        )}
+        <Button
+          variant={hasSpec ? 'secondary' : 'primary'}
+          icon={<SparkleIcon />}
+          loading={generating}
+          loadingText="AI 생성 중…"
+          onClick={() => generateTests(checklist.id)}
+        >
+          {hasSpec ? '다시 생성' : '테스트 생성'}
+        </Button>
+      </div>
     </div>
   )
 }

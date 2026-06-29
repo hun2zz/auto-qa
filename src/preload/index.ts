@@ -21,10 +21,12 @@ const api: AutoQaApi = {
   listChecklists: (p) => ipcRenderer.invoke(IPC.listChecklists, p),
   saveChecklist: (p, id, md) => ipcRenderer.invoke(IPC.saveChecklist, p, id, md),
   approveChecklist: (p, id) => ipcRenderer.invoke(IPC.approveChecklist, p, id),
+  approveAllChecklists: (p) => ipcRenderer.invoke(IPC.approveAllChecklists, p),
 
   generateTests: (p, id) => ipcRenderer.invoke(IPC.generateTests, p, id),
+  generateAllTests: (p) => ipcRenderer.invoke(IPC.generateAllTests, p),
 
-  runTests: (p) => ipcRenderer.invoke(IPC.runTests, p),
+  runTests: (p, only) => ipcRenderer.invoke(IPC.runTests, p, only),
   getLastReport: (p) => ipcRenderer.invoke(IPC.getLastReport, p),
 
   getAuthStatus: (p) => ipcRenderer.invoke(IPC.getAuthStatus, p),

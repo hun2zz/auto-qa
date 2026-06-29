@@ -87,10 +87,12 @@ interface AppState {
   refreshChecklists: () => Promise<void>
   saveChecklist: (id: string, markdown: string) => Promise<void>
   approveChecklist: (id: string) => Promise<void>
+  approveAllChecklists: () => Promise<void>
 
   generateTests: (checklistId: string) => Promise<void>
+  generateAllTests: () => Promise<void>
 
-  runTests: () => Promise<void>
+  runTests: (only?: string) => Promise<void>
   loadLastReport: () => Promise<void>
 
   loadAuthStatus: () => Promise<void>
@@ -337,6 +339,16 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
+    approveAllChecklists: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('approveAll', async () => {
+        const checklists = await window.api.approveAllChecklists(project.path)
+        set({ checklists })
+        get().pushToast('success', '모든 체크리스트를 승인했습니다')
+      })
+    },
+
     generateTests: async (checklistId) => {
       const { project } = get()
       if (!project) return
@@ -349,11 +361,21 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    runTests: async () => {
+    generateAllTests: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('generateAllTests', async () => {
+        const checklists = await window.api.generateAllTests(project.path)
+        set({ checklists })
+        get().pushToast('success', '테스트 일괄 생성 완료')
+      })
+    },
+
+    runTests: async (only) => {
       const { project } = get()
       if (!project) return
       await withBusy('runTests', async () => {
-        const report = await window.api.runTests(project.path)
+        const report = await window.api.runTests(project.path, only)
         set({ lastReport: report })
         if (report.fatalError) {
           get().pushToast('error', '실행 중 치명적 오류가 발생했습니다')

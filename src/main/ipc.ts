@@ -2,8 +2,10 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC, type ProgressEvent } from '@shared/types'
 import {
   addRequirementText,
+  approveAllChecklists,
   approveChecklist,
   connectProject,
+  generateAllTests,
   generateAuthSetup,
   generateChecklist,
   generateTests,
@@ -96,13 +98,22 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.approveChecklist, (_e, projectPath: string, id: string) =>
     approveChecklist(projectPath, id)
   )
+  ipcMain.handle(IPC.approveAllChecklists, (_e, projectPath: string) =>
+    approveAllChecklists(projectPath)
+  )
 
   ipcMain.handle(IPC.generateTests, async (e, projectPath: string, checklistId: string) => {
     const config = await getConfig(projectPath)
     return generateTests(projectPath, checklistId, config.baseURL, progressSender(e))
   })
+  ipcMain.handle(IPC.generateAllTests, async (e, projectPath: string) => {
+    const config = await getConfig(projectPath)
+    return generateAllTests(projectPath, config.baseURL, progressSender(e))
+  })
 
-  ipcMain.handle(IPC.runTests, (e, projectPath: string) => runTests(projectPath, progressSender(e)))
+  ipcMain.handle(IPC.runTests, (e, projectPath: string, only?: string) =>
+    runTests(projectPath, progressSender(e), only)
+  )
   ipcMain.handle(IPC.getLastReport, (_e, projectPath: string) => getLastReport(projectPath))
 
   // auth
