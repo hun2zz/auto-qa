@@ -120,6 +120,27 @@ spec: null
 - 파일만 쓰고, 마지막 result 에는 무엇을 만들었는지 1~2줄 요약만.`
 }
 
+export function flowTestsPrompt(args: { gaps: string; testsDir: string }): string {
+  return `너는 시니어 QA 엔지니어다. '커버리지가 안 닿은 파일들'을 보고, 그 파일들이 속한 '사용자 흐름(flow)'을 찾아 **그 흐름의 E2E 테스트**를 만든다. (함수 단독 테스트 금지 — 흐름을 타면 그 코드들이 자연히 덮인다)
+
+# 안 덮인 파일 (gap)
+${args.gaps}
+
+# 작업
+1. 위 파일들을 Read/Grep 해서 어떤 '사용자 흐름/기능'에 속하는지 파악한다. .qa/intent, .qa/requirements 도 참고.
+   - 관련 파일들을 flow 로 묶는다 (예: refund.ts + RefundModal.tsx → "환불").
+   - 어떤 flow 에도 안 속하는 순수 유틸/죽은 코드는 테스트하지 말고, result 에 "unreachable: <파일>" 로 보고한다.
+2. 임팩트 큰 under-covered flow 1~3개를 골라 E2E 테스트를 만든다:
+   - 그 flow 의 사용자 시나리오를 페이지에서 실제로 수행(이동·클릭·입력)해 해당 코드가 실행되게 한다.
+   - characterization(현재 동작 고정) 스타일. 명백한 에러 상태(500 등)는 단언 금지.
+   - 로그인/시드 필요하면 test.fixme() + 사유.
+
+# 출력 (${args.testsDir} 안에 code-flow-<flow>.spec.ts 파일들을 Write)
+- import { test, expect } from '@playwright/test', page.goto 상대경로.
+- 셀렉터는 코드에서 확인. 기존 테스트와 중복 말 것.
+- 파일만 쓰고 result 에는 만든 flow·테스트 수 + unreachable 개수만.`
+}
+
 export function codeTestsPrompt(args: { testsDir: string }): string {
   return `너는 Playwright characterization(특성) 테스트 전문가다. 코드를 분석해 '현재 동작을 고정'하는 회귀+커버리지 테스트를 만든다. (요구사항 정확성 판정이 아니라, 지금 동작을 박제해 회귀를 잡고 코드 커버리지를 채우는 용도)
 

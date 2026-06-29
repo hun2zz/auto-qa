@@ -104,6 +104,7 @@ interface AppState {
   auditCoverage: (requirementName: string, kind: CoverageKind) => Promise<void>
   loadCoverageReports: () => Promise<void>
   runCodeCoverage: () => Promise<void>
+  runCoverageLoop: (targetPct: number, maxIterations: number) => Promise<void>
   loadCodeCoverage: () => Promise<void>
 
   loadAuthStatus: () => Promise<void>
@@ -453,6 +454,18 @@ export const useStore = create<AppState>((set, get) => {
         set({ codeCoverage })
         if (codeCoverage.fatalError) get().pushToast('error', `코드 커버리지 실패: ${codeCoverage.fatalError}`)
         else get().pushToast('success', `코드 커버리지 — 라인 ${codeCoverage.lines.pct}%`)
+      })
+    },
+
+    runCoverageLoop: async (targetPct, maxIterations) => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('runCoverageLoop', async () => {
+        const codeCoverage = await window.api.runCoverageLoop(project.path, targetPct, maxIterations)
+        set({ codeCoverage })
+        if (codeCoverage.fatalError)
+          get().pushToast('error', `커버리지 루프 실패: ${codeCoverage.fatalError}`)
+        else get().pushToast('success', `커버리지 루프 완료 — 라인 ${codeCoverage.lines.pct}%`)
       })
     },
 

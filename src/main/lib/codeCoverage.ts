@@ -3,6 +3,8 @@ import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { delimiter, join, resolve as resolvePath } from 'node:path'
 import type { CodeCoverageReport, CoverageMetric, ProgressEvent } from '@shared/types'
+import { runClaude } from './claudeRunner'
+import { flowTestsPrompt } from './prompts'
 
 /**
  * 코드 커버리지 (서버+클라). nextcov(V8 기반)로 Turbopack 호환.
@@ -22,87 +24,109 @@ export async function getCodeCoverage(projectPath: string): Promise<CodeCoverage
   }
 }
 
+interface CovContext {
+  env: NodeJS.ProcessEnv
+  server: { stop: () => void }
+  restorers: Array<() => Promise<void>>
+  warning?: string
+}
+
+/** 패치 + production 빌드 + 서버 기동 (1회). 이후 테스트만 여러 번 재실행 가능. */
+async function prepareCoverage(
+  projectPath: string,
+  baseURL: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<CovContext> {
+  const restorers: Array<() => Promise<void>> = []
+  await ensureDeps(projectPath, onProgress)
+  await writeHarness(projectPath)
+
+  const sm = await patchSourceMaps(projectPath)
+  if (sm.restore) restorers.push(sm.restore)
+  const ts = await patchTsconfig(projectPath)
+  if (ts) restorers.push(ts)
+
+  onProgress({ phase: 'analyze', message: 'production 빌드 중… (수 분 소요)' })
+  const build = await run(
+    projectPath,
+    'npm',
+    ['run', 'build'],
+    { NODE_OPTIONS: '--max-old-space-size=4096' },
+    onProgress
+  )
+  if (build.code !== 0) {
+    for (const r of restorers.reverse()) await r().catch(() => {})
+    throw new Error(
+      `production 빌드 실패 (code ${build.code}). 다른 dev 서버가 떠있거나 메모리 부족일 수 있습니다.\n${build.tail.slice(-800)}`
+    )
+  }
+
+  onProgress({ phase: 'devserver', message: '커버리지 서버 기동 중…' })
+  const covOut = join(projectPath, '.v8-coverage')
+  await fs.rm(covOut, { recursive: true, force: true })
+  await fs.mkdir(covOut, { recursive: true })
+  restorers.push(async () => {
+    await fs.rm(covOut, { recursive: true, force: true })
+  })
+  const server = await startServer(projectPath, baseURL, covOut, onProgress)
+
+  const tool = toolPaths()
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    QA_BASE_URL: baseURL,
+    NODE_PATH: tool.nodeModules + (process.env.NODE_PATH ? delimiter + process.env.NODE_PATH : ''),
+    FORCE_COLOR: '0'
+  }
+  return { env, server, restorers, warning: sm.warning }
+}
+
+/** 현재 .qa/tests 의 테스트를 실행해 커버리지 측정(재빌드 없음) */
+async function measureOnce(
+  projectPath: string,
+  ctx: CovContext,
+  onProgress: (e: ProgressEvent) => void
+): Promise<CodeCoverageReport> {
+  const specs = await listSpecs(projectPath)
+  onProgress({ phase: 'playwright', message: `테스트 ${specs.length}개 실행 + 커버리지 수집 중…` })
+  const tool = toolPaths()
+  const pw = await run(
+    projectPath,
+    tool.cmd,
+    [...tool.prefix, 'test', '--config', join('.qa', 'coverage', 'playwright.config.ts')],
+    ctx.env,
+    onProgress
+  )
+  let warning = ctx.warning
+  if (pw.code !== 0)
+    warning = (warning ? warning + ' / ' : '') + '일부 테스트 실패(커버리지는 계속 수집됨)'
+  const report = await parseReport(projectPath, specs, warning)
+  await fs.mkdir(join(qaDir(projectPath), 'reports'), { recursive: true }).catch(() => {})
+  await fs
+    .writeFile(codeCoveragePath(projectPath), JSON.stringify(report, null, 2), 'utf8')
+    .catch(() => {})
+  return report
+}
+
+async function cleanup(ctx: CovContext): Promise<void> {
+  ctx.server?.stop()
+  for (const r of ctx.restorers.reverse()) await r().catch(() => {})
+}
+
 export async function runCodeCoverage(
   projectPath: string,
   baseURL: string,
   onProgress: (e: ProgressEvent) => void
 ): Promise<CodeCoverageReport> {
-  const restorers: Array<() => Promise<void>> = []
-  let server: { stop: () => void } | null = null
-  let warning: string | undefined
-
+  if ((await listSpecs(projectPath)).length === 0)
+    return fail('생성된 테스트(.qa/tests/*.spec.ts)가 없습니다. 먼저 테스트를 생성하세요.')
+  let ctx: CovContext
   try {
-    // 1) 의존성 보장 (nextcov, @playwright/test)
-    await ensureDeps(projectPath, onProgress)
-
-    // 2) 생성된 테스트 목록 (이 테스트들이 코드를 얼마나 덮나 측정)
-    const specs = await listSpecs(projectPath)
-    if (specs.length === 0) {
-      return fail('생성된 테스트(.qa/tests/*.spec.ts)가 없습니다. 먼저 테스트를 생성하세요.')
-    }
-    onProgress({ phase: 'analyze', message: `생성된 테스트 ${specs.length}개로 코드 커버리지 측정` })
-
-    // 3) 하니스 작성 (.qa/coverage) — 실제 .qa/tests 를 돌린다
-    await writeHarness(projectPath)
-
-    // 4) 임시 패치: 소스맵(next.config) + .qa 빌드 제외(tsconfig)
-    const sm = await patchSourceMaps(projectPath)
-    if (sm.restore) restorers.push(sm.restore)
-    if (sm.warning) warning = sm.warning
-    const ts = await patchTsconfig(projectPath)
-    if (ts) restorers.push(ts)
-
-    // 5) production 빌드 (소스맵). 메모리 상향으로 build worker OOM 완화.
-    onProgress({ phase: 'analyze', message: 'production 빌드 중… (수 분 소요)' })
-    const build = await run(
-      projectPath,
-      'npm',
-      ['run', 'build'],
-      { NODE_OPTIONS: '--max-old-space-size=4096' },
-      onProgress
-    )
-    if (build.code !== 0) {
-      return fail(
-        `production 빌드 실패 (code ${build.code}). 다른 dev 서버가 떠있거나 메모리 부족일 수 있습니다. ` +
-          `\n${build.tail.slice(-800)}`
-      )
-    }
-
-    // 6) production 서버 기동 (V8 커버리지). nextcov 기본 스캔 경로 .v8-coverage 사용.
-    onProgress({ phase: 'devserver', message: '커버리지 서버 기동 중…' })
-    const covOut = join(projectPath, '.v8-coverage')
-    await fs.rm(covOut, { recursive: true, force: true })
-    await fs.mkdir(covOut, { recursive: true })
-    restorers.push(async () => {
-      await fs.rm(covOut, { recursive: true, force: true })
-    })
-    server = await startServer(projectPath, baseURL, covOut, onProgress)
-
-    // 7) 생성된 테스트 실행 (nextcov 가 서버+클라 커버리지 수집)
-    onProgress({ phase: 'playwright', message: '생성된 테스트 실행 + 커버리지 수집 중…' })
-    const tool = toolPaths()
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      QA_BASE_URL: baseURL,
-      NODE_PATH: tool.nodeModules + (process.env.NODE_PATH ? delimiter + process.env.NODE_PATH : ''),
-      FORCE_COLOR: '0'
-    }
-    const pw = await run(
-      projectPath,
-      tool.cmd,
-      [...tool.prefix, 'test', '--config', join('.qa', 'coverage', 'playwright.config.ts')],
-      env,
-      onProgress
-    )
-    if (pw.code !== 0)
-      warning = (warning ? warning + ' / ' : '') + '일부 테스트 실패(커버리지는 계속 수집됨)'
-
-    // 8) 리포트 파싱 + 저장
-    const report = await parseReport(projectPath, specs, warning)
-    await fs.mkdir(join(qaDir(projectPath), 'reports'), { recursive: true }).catch(() => {})
-    await fs
-      .writeFile(codeCoveragePath(projectPath), JSON.stringify(report, null, 2), 'utf8')
-      .catch(() => {})
+    ctx = await prepareCoverage(projectPath, baseURL, onProgress)
+  } catch (e) {
+    return fail((e as Error).message)
+  }
+  try {
+    const report = await measureOnce(projectPath, ctx, onProgress)
     onProgress({
       phase: 'playwright',
       message: `코드 커버리지 — 라인 ${report.lines.pct}% (실행 파일 ${report.executedFiles}/${report.totalFiles})`,
@@ -112,10 +136,80 @@ export async function runCodeCoverage(
   } catch (e) {
     return fail((e as Error).message)
   } finally {
-    server?.stop()
-    // 임시 패치 복원 (역순)
-    for (const r of restorers.reverse()) await r().catch(() => {})
+    await cleanup(ctx)
   }
+}
+
+/**
+ * [흐름 기반 커버리지 루프] 빌드 1회 → (측정 → gap을 flow로 묶어 flow 테스트 생성)를 목표/한도까지 반복.
+ * 조각(함수)이 아니라 '흐름' 단위로 테스트를 늘려 가짜 커버리지를 피한다.
+ */
+export async function runCoverageLoop(
+  projectPath: string,
+  baseURL: string,
+  targetPct: number,
+  maxIterations: number,
+  onProgress: (e: ProgressEvent) => void
+): Promise<CodeCoverageReport> {
+  if ((await listSpecs(projectPath)).length === 0)
+    return fail('생성된 테스트가 없습니다. 먼저 테스트를 생성하세요.')
+  let ctx: CovContext
+  try {
+    ctx = await prepareCoverage(projectPath, baseURL, onProgress)
+  } catch (e) {
+    return fail((e as Error).message)
+  }
+  let report: CodeCoverageReport | null = null
+  try {
+    for (let i = 0; i < maxIterations; i++) {
+      report = await measureOnce(projectPath, ctx, onProgress)
+      if (report.fatalError) break
+      onProgress({
+        phase: 'analyze',
+        message: `반복 ${i + 1}/${maxIterations} — 라인 ${report.lines.pct}% (목표 ${targetPct}%)`,
+        fraction: Math.min(1, report.lines.pct / targetPct)
+      })
+      if (report.lines.pct >= targetPct) {
+        onProgress({ phase: 'analyze', message: `목표 ${targetPct}% 달성`, done: true })
+        break
+      }
+      if (i === maxIterations - 1) break // 마지막 반복은 측정으로 끝
+      // gap → flow 테스트 생성 (다음 측정에 반영)
+      const made = await generateFlowTests(projectPath, report.gaps, onProgress)
+      if (made === 0) {
+        onProgress({ phase: 'analyze', message: '더 만들 flow 테스트가 없습니다(수렴).', done: true })
+        break
+      }
+    }
+    return report ?? fail('측정 결과가 없습니다.')
+  } finally {
+    await cleanup(ctx)
+  }
+}
+
+/** [AI] gap(안 덮인 파일)을 흐름으로 묶어 그 흐름의 E2E 테스트 생성 → .qa/tests/code-flow-*.spec.ts */
+async function generateFlowTests(
+  projectPath: string,
+  gaps: { file: string; pct: number }[],
+  onProgress: (e: ProgressEvent) => void
+): Promise<number> {
+  const before = (await listSpecs(projectPath)).filter((f) => f.startsWith('code-flow-')).length
+  const gapList = gaps
+    .filter((g) => g.pct < 50)
+    .slice(0, 30)
+    .map((g) => `- ${g.file} (${g.pct}%)`)
+    .join('\n')
+  onProgress({ phase: 'tests', message: 'gap을 흐름으로 묶어 flow 테스트 생성 중…' })
+  const res = await runClaude({
+    projectPath,
+    prompt: flowTestsPrompt({ gaps: gapList, testsDir: join(qaDir(projectPath), 'tests') }),
+    allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+    phase: 'tests',
+    onProgress
+  })
+  if (!res.ok) return 0
+  const after = (await listSpecs(projectPath)).filter((f) => f.startsWith('code-flow-')).length
+  return Math.max(0, after - before)
 }
 
 // ----------------------------------------------------------------------------

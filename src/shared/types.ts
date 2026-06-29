@@ -235,6 +235,7 @@ export const IPC = {
   getCoverageReports: 'coverage:list',
   runCodeCoverage: 'coverage:code:run',
   getCodeCoverage: 'coverage:code:get',
+  runCoverageLoop: 'coverage:code:loop',
   // auth
   getAuthStatus: 'auth:status',
   setAuthSecret: 'auth:setSecret',
@@ -329,6 +330,12 @@ export interface AutoQaApi {
   /** [무거움] production 빌드 + nextcov 로 서버+클라 코드 라인 커버리지 측정 */
   runCodeCoverage(projectPath: string): Promise<CodeCoverageReport>
   getCodeCoverage(projectPath: string): Promise<CodeCoverageReport | null>
+  /** [흐름 기반 루프] 측정 → gap을 flow로 묶어 flow 테스트 생성 → 목표/한도까지 반복 */
+  runCoverageLoop(
+    projectPath: string,
+    targetPct: number,
+    maxIterations: number
+  ): Promise<CodeCoverageReport>
 
   // --- 로그인(auth) ---
   getAuthStatus(projectPath: string): Promise<AuthStatus>

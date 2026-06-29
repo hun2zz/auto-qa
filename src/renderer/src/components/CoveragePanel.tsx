@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import { useState, type JSX } from 'react'
 import type { CodeCoverageReport } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
@@ -34,6 +34,11 @@ function CodeCoverageSection(): JSX.Element {
   const report = useStore((s) => s.codeCoverage)
   const run = useStore((s) => s.runCodeCoverage)
   const busy = useStore((s) => !!s.busyKeys['runCodeCoverage'])
+  const runLoop = useStore((s) => s.runCoverageLoop)
+  const looping = useStore((s) => !!s.busyKeys['runCoverageLoop'])
+  const anyBusy = busy || looping
+  const [target, setTarget] = useState(70)
+  const [iters, setIters] = useState(3)
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,11 +57,55 @@ function CodeCoverageSection(): JSX.Element {
             variant="primary"
             icon={busy ? undefined : <FlaskIcon width={14} height={14} />}
             loading={busy}
+            disabled={anyBusy}
             loadingText="측정 중… (수 분)"
             onClick={() => void run()}
           >
             {report ? '다시 측정' : '코드 커버리지 측정'}
           </Button>
+        </div>
+
+        {/* 흐름 기반 커버리지 루프 */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border bg-surface-2/20 px-5 py-3">
+          <span className="text-[11.5px] font-medium text-text">흐름 기반 자동 루프</span>
+          <span className="text-[11px] text-muted">
+            측정 → gap을 flow로 묶어 flow 테스트 생성 → 목표까지 반복
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <label className="flex items-center gap-1 text-[11px] text-muted">
+              목표
+              <input
+                type="number"
+                value={target}
+                min={1}
+                max={100}
+                onChange={(e) => setTarget(Number(e.target.value) || 0)}
+                className="h-7 w-14 rounded-md border border-border bg-bg px-2 text-center text-xs text-text outline-none focus:border-brand/60"
+              />
+              %
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-muted">
+              반복
+              <input
+                type="number"
+                value={iters}
+                min={1}
+                max={6}
+                onChange={(e) => setIters(Number(e.target.value) || 1)}
+                className="h-7 w-12 rounded-md border border-border bg-bg px-2 text-center text-xs text-text outline-none focus:border-brand/60"
+              />
+            </label>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={looping}
+              disabled={anyBusy}
+              loadingText="루프 중… (오래 걸림)"
+              onClick={() => void runLoop(target, iters)}
+            >
+              루프 실행
+            </Button>
+          </div>
         </div>
 
         {report && !report.fatalError && (
