@@ -8,7 +8,8 @@ import {
   FlaskIcon,
   PlayIcon,
   GearIcon,
-  CheckIcon
+  CheckIcon,
+  TrashIcon
 } from './icons'
 
 interface StepDef {
@@ -35,6 +36,8 @@ export function Sidebar(): JSX.Element {
   const openProject = useStore((s) => s.openProject)
   const opening = useStore((s) => !!s.busyKeys['openProject'])
   const setConfigOpen = useStore((s) => s.setConfigOpen)
+  const resetProject = useStore((s) => s.resetProject)
+  const resetting = useStore((s) => !!s.busyKeys['resetProject'])
   const requirements = useStore((s) => s.requirements)
   const checklists = useStore((s) => s.checklists)
   const lastReport = useStore((s) => s.lastReport)
@@ -147,8 +150,8 @@ export function Sidebar(): JSX.Element {
         })}
       </nav>
 
-      {/* 하단 설정 버튼 */}
-      <div className="border-t border-border p-3">
+      {/* 하단 설정·초기화 */}
+      <div className="space-y-1 border-t border-border p-3">
         <button
           disabled={!project}
           onClick={() => setConfigOpen(true)}
@@ -156,6 +159,14 @@ export function Sidebar(): JSX.Element {
         >
           <GearIcon />
           실행 설정
+        </button>
+        <button
+          disabled={!project || resetting}
+          onClick={() => void resetProject()}
+          className="no-drag flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-muted transition-colors hover:bg-bad/10 hover:text-bad disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <TrashIcon />
+          {resetting ? '초기화 중…' : '데이터 초기화'}
         </button>
       </div>
     </aside>

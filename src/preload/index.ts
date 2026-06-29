@@ -7,6 +7,7 @@ const api: AutoQaApi = {
   getLastProject: () => ipcRenderer.invoke(IPC.getLastProject),
   getRecentProjects: () => ipcRenderer.invoke(IPC.getRecentProjects),
   reopenProject: (path) => ipcRenderer.invoke(IPC.reopenProject, path),
+  resetProject: (p) => ipcRenderer.invoke(IPC.resetProject, p),
   getConfig: (p) => ipcRenderer.invoke(IPC.getConfig, p),
   saveConfig: (p, c) => ipcRenderer.invoke(IPC.saveConfig, p, c),
   listRules: (p) => ipcRenderer.invoke(IPC.listRules, p),

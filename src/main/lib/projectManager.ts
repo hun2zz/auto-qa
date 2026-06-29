@@ -138,6 +138,30 @@ export async function saveConfig(projectPath: string, config: QaConfig): Promise
 }
 
 // ----------------------------------------------------------------------------
+// 초기화 (생성물 삭제)
+// ----------------------------------------------------------------------------
+
+export type ResetScope = 'generated' | 'all'
+
+/** 생성물 삭제. generated=체크리스트/테스트/리포트/커버리지, all=요구사항·의도까지. 설정/규칙/로그인은 유지 */
+export async function resetProject(projectPath: string, scope: ResetScope): Promise<void> {
+  const dirs = [
+    checklistDir(projectPath),
+    testsDir(projectPath),
+    reportDir(projectPath),
+    join(qaDir(projectPath), 'coverage'),
+    join(qaDir(projectPath), '.work')
+  ]
+  if (scope === 'all') {
+    dirs.push(reqDir(projectPath), intentDir(projectPath))
+  }
+  for (const d of dirs) {
+    await fs.rm(d, { recursive: true, force: true })
+    await fs.mkdir(d, { recursive: true })
+  }
+}
+
+// ----------------------------------------------------------------------------
 // 요구사항
 // ----------------------------------------------------------------------------
 

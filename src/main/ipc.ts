@@ -13,6 +13,7 @@ import {
   generateCodeTests,
   generateTests,
   getConfig,
+  resetProject,
   importRequirement,
   listChecklists,
   listRequirements,
@@ -68,6 +69,24 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.saveRule, (_e, projectPath: string, name: string, content: string) =>
     saveRule(projectPath, name, content)
   )
+
+  ipcMain.handle(IPC.resetProject, async (e, projectPath: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const res = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: '데이터 초기화',
+      message: '생성된 데이터를 삭제할까요?',
+      detail:
+        '· 생성물만: 체크리스트·테스트·리포트·커버리지 삭제 (요구사항/설정/규칙/로그인 유지)\n· 전체: 위 + 요구사항·의도까지 삭제',
+      buttons: ['취소', '생성물만 삭제', '전체 삭제'],
+      defaultId: 0,
+      cancelId: 0
+    })
+    if (res.response === 0) return 'cancel'
+    const scope = res.response === 2 ? 'all' : 'generated'
+    await resetProject(projectPath, scope)
+    return scope
+  })
 
   ipcMain.handle(IPC.listRequirements, (_e, projectPath: string) => listRequirements(projectPath))
 

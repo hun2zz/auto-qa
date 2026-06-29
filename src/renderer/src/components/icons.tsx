@@ -92,6 +92,12 @@ export const TerminalIcon = (p: IconProps): JSX.Element => (
   </svg>
 )
 
+export const TrashIcon = (p: IconProps): JSX.Element => (
+  <svg {...base(p)}>
+    <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6m4 5v6m4-6v6" />
+  </svg>
+)
+
 export const AlertIcon = (p: IconProps): JSX.Element => (
   <svg {...base(p)}>
     <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />

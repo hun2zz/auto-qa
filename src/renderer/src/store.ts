@@ -78,6 +78,7 @@ interface AppState {
 
   openProject: () => Promise<void>
   restoreLastProject: () => Promise<void>
+  resetProject: () => Promise<void>
   refreshAll: () => Promise<void>
   loadConfig: () => Promise<void>
   saveConfig: (config: QaConfig) => Promise<void>
@@ -230,6 +231,19 @@ export const useStore = create<AppState>((set, get) => {
         activeStep: 'requirements'
       })
       await get().refreshAll()
+    },
+
+    resetProject: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('resetProject', async () => {
+        const scope = await window.api.resetProject(project.path)
+        if (scope === 'cancel') return
+        set({ codeCoverage: null, lastReport: null, lastHeal: null, coverageReports: [] })
+        await get().refreshAll()
+        get().setActiveStep('requirements')
+        get().pushToast('success', scope === 'all' ? '전체 초기화 완료' : '생성물 초기화 완료')
+      })
     },
 
     refreshAll: async () => {

@@ -207,6 +207,7 @@ export const IPC = {
   saveConfig: 'project:saveConfig',
   listRules: 'rules:list',
   saveRule: 'rules:save',
+  resetProject: 'project:reset',
   listRequirements: 'req:list',
   uploadRequirement: 'req:upload',
   addRequirementText: 'req:addText',
@@ -269,6 +270,8 @@ export interface AutoQaApi {
   getRecentProjects(): Promise<string[]>
   /** 특정 경로의 프로젝트를 다시 연결 */
   reopenProject(path: string): Promise<ProjectInfo | null>
+  /** 생성물 삭제 (네이티브 확인 다이얼로그). 반환=수행한 범위 또는 'cancel' */
+  resetProject(projectPath: string): Promise<'generated' | 'all' | 'cancel'>
   getConfig(projectPath: string): Promise<QaConfig>
   saveConfig(projectPath: string, config: QaConfig): Promise<void>
   /** .qa/rules/*.md — 단계별로 쪼갠 가드레일 규칙 (무신사식). 해당 phase 규칙만 AI 에 주입됨 */
