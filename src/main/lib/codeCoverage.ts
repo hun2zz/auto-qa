@@ -49,11 +49,20 @@ export async function runCodeCoverage(
     const ts = await patchTsconfig(projectPath)
     if (ts) restorers.push(ts)
 
-    // 5) production 빌드 (소스맵)
+    // 5) production 빌드 (소스맵). 메모리 상향으로 build worker OOM 완화.
     onProgress({ phase: 'analyze', message: 'production 빌드 중… (수 분 소요)' })
-    const build = await run(projectPath, 'npm', ['run', 'build'], {}, onProgress)
+    const build = await run(
+      projectPath,
+      'npm',
+      ['run', 'build'],
+      { NODE_OPTIONS: '--max-old-space-size=4096' },
+      onProgress
+    )
     if (build.code !== 0) {
-      return fail(`production 빌드 실패 (code ${build.code}). ${build.tail.slice(-400)}`)
+      return fail(
+        `production 빌드 실패 (code ${build.code}). 다른 dev 서버가 떠있거나 메모리 부족일 수 있습니다. ` +
+          `\n${build.tail.slice(-800)}`
+      )
     }
 
     // 6) production 서버 기동 (V8 커버리지). nextcov 기본 스캔 경로 .v8-coverage 사용.
