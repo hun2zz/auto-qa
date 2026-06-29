@@ -75,6 +75,10 @@ export interface Checklist {
   status: ChecklistStatus
   /** 이 체크리스트로 생성된 테스트 spec 경로 (생성 전이면 null) */
   specPath: string | null
+  /** 원본 요구사항/의도 파일이 체크리스트보다 최신 = flow 변경됨 → 체크리스트 재생성 권장 */
+  sourceStale?: boolean
+  /** 체크리스트가 spec 보다 최신 = 체크리스트 변경됨 → 테스트 재생성 권장 */
+  specStale?: boolean
 }
 
 export type TestStatus = 'passed' | 'failed' | 'skipped' | 'timedOut'

@@ -148,6 +148,11 @@ function ChecklistCard({ checklist }: { checklist: Checklist }): JSX.Element {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {checklist.sourceStale && (
+            <span title="원본 요구사항이 변경됨 — 체크리스트 다시 생성 권장">
+              <Badge tone="warn">요구사항 변경됨</Badge>
+            </span>
+          )}
           {approved ? (
             <Badge tone="ok" icon={<CheckIcon width={11} height={11} strokeWidth={3} />}>
               승인됨

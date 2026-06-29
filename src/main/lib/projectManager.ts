@@ -240,10 +240,28 @@ export async function listChecklists(projectPath: string): Promise<Checklist[]> 
   const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.md'))
   const out: Checklist[] = []
   for (const f of files.sort()) {
-    const raw = await fs.readFile(join(dir, f), 'utf8')
-    out.push(parseChecklist(slug(f), raw))
+    const checklistFile = join(dir, f)
+    const raw = await fs.readFile(checklistFile, 'utf8')
+    const c = parseChecklist(slug(f), raw)
+
+    // 변경 감지: 원본 요구사항이 체크리스트보다 최신? 체크리스트가 spec보다 최신?
+    const cMtime = await mtime(checklistFile)
+    const reqMtime = await mtime(resolveRequirementPath(projectPath, c.sourceRequirement))
+    const specMtime = c.specPath ? await mtime(join(qaDir(projectPath), c.specPath)) : null
+    c.sourceStale = reqMtime != null && cMtime != null && reqMtime > cMtime
+    c.specStale = c.specPath != null && specMtime != null && cMtime != null && cMtime > specMtime
+
+    out.push(c)
   }
   return out
+}
+
+async function mtime(path: string): Promise<number | null> {
+  try {
+    return (await fs.stat(path)).mtimeMs
+  } catch {
+    return null
+  }
 }
 
 async function readChecklist(projectPath: string, id: string): Promise<Checklist> {

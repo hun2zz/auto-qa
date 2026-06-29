@@ -109,10 +109,15 @@ function TestRow({ checklist }: { checklist: Checklist }): JSX.Element {
             <h3 className="truncate text-sm font-medium text-text" title={checklist.title}>
               {checklist.title}
             </h3>
-            {hasSpec && (
+            {hasSpec && !checklist.specStale && (
               <Badge tone="ok" icon={<CheckIcon width={11} height={11} strokeWidth={3} />}>
                 생성됨
               </Badge>
+            )}
+            {hasSpec && checklist.specStale && (
+              <span title="체크리스트가 변경됨 — 테스트 재생성 권장">
+                <Badge tone="warn">변경됨 · 재생성 필요</Badge>
+              </span>
             )}
           </div>
           {hasSpec ? (
