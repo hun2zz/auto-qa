@@ -344,6 +344,7 @@ export const IPC = {
   rebuildIndex: 'index:build',
   validateSelectors: 'index:validate',
   runTests: 'tests:run',
+  cancelRun: 'tests:cancel',
   negativeControl: 'tests:negativeControl',
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
@@ -464,6 +465,8 @@ export interface AutoQaApi {
 
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
   runTests(projectPath: string, only?: string): Promise<RunReport>
+  /** 진행 중인 runTests 를 중단 (Playwright 종료 + dev 서버 정리) */
+  cancelRun(projectPath: string): Promise<void>
   /** [무거움] 통과 테스트의 기대값을 틀리게 변형해 재실행 → 진짜 검증하는지(sensitive) 확인 */
   negativeControl(projectPath: string): Promise<NegativeControlReport>
   getLastReport(projectPath: string): Promise<RunReport | null>

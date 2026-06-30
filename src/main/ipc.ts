@@ -28,7 +28,7 @@ import {
 import { listRules, saveRule } from './lib/rules'
 import { getLastProjectPath, getRecentProjects, rememberProject } from './lib/appSettings'
 import { existsSync } from 'node:fs'
-import { getLastReport, healAndRerun, negativeControl, runTests } from './lib/runner'
+import { cancelRun, getLastReport, healAndRerun, negativeControl, runTests } from './lib/runner'
 import { getAuthStatus, setAuthSecret } from './lib/auth'
 import { getCodeCoverage, runCodeCoverage, runCoverageLoop } from './lib/codeCoverage'
 import { buildIndex, validateSelectors } from './lib/codeIndex'
@@ -163,6 +163,7 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.runTests, (e, projectPath: string, only?: string) =>
     runTests(projectPath, progressSender(e), only)
   )
+  ipcMain.handle(IPC.cancelRun, (_e, projectPath: string) => cancelRun(projectPath))
   ipcMain.handle(IPC.negativeControl, (e, projectPath: string) =>
     negativeControl(projectPath, progressSender(e))
   )

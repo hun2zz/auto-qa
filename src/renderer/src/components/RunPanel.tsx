@@ -8,6 +8,7 @@ import { PlayIcon, AlertIcon, ChevronIcon, SparkleIcon } from './icons'
 export function RunPanel(): JSX.Element {
   const lastReport = useStore((s) => s.lastReport)
   const runTests = useStore((s) => s.runTests)
+  const cancelRun = useStore((s) => s.cancelRun)
   const running = useStore((s) => !!s.busyKeys['runTests'])
   const checklists = useStore((s) => s.checklists)
   const hasSpecs = checklists.some((c) => c.specPath)
@@ -15,18 +16,25 @@ export function RunPanel(): JSX.Element {
   const scaffolding = useStore((s) => !!s.busyKeys['scaffoldCI'])
 
   const runBtn = (
-    <Button
-      size="lg"
-      variant="primary"
-      icon={<PlayIcon />}
-      loading={running}
-      loadingText="실행 중…"
-      disabled={!hasSpecs}
-      title={hasSpecs ? undefined : '먼저 테스트를 생성하세요'}
-      onClick={() => void runTests()}
-    >
-      QA 실행
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button
+        size="lg"
+        variant="primary"
+        icon={<PlayIcon />}
+        loading={running}
+        loadingText="실행 중…"
+        disabled={!hasSpecs}
+        title={hasSpecs ? undefined : '먼저 테스트를 생성하세요'}
+        onClick={() => void runTests()}
+      >
+        QA 실행
+      </Button>
+      {running && (
+        <Button size="lg" variant="secondary" onClick={() => void cancelRun()}>
+          중단
+        </Button>
+      )}
+    </div>
   )
 
   const headerAction = (

@@ -20,6 +20,14 @@ import { authEnv } from './auth'
 import { composeRules } from './rules'
 import { healPrompt, rulesHeader } from './prompts'
 
+/** 진행 중인 runTests 의 AbortController (projectPath 별 1개). 중단용. */
+const activeRuns = new Map<string, AbortController>()
+
+/** 진행 중인 runTests 를 중단한다. (Playwright child 종료 → 서버는 finally 에서 정리) */
+export function cancelRun(projectPath: string): void {
+  activeRuns.get(projectPath)?.abort()
+}
+
 /** [결정적] dev 서버 구동 → Playwright 실행 → 리포트 저장. AI 미사용. */
 export async function runTests(
   projectPath: string,
@@ -27,20 +35,30 @@ export async function runTests(
   only?: string
 ): Promise<RunReport> {
   let server: DevServerHandle | null = null
+  const controller = new AbortController()
+  activeRuns.set(projectPath, controller)
   try {
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
-    const stamped = await runAndStamp(projectPath, { extraEnv, onProgress, only })
+    const stamped = await runAndStamp(projectPath, {
+      extraEnv,
+      onProgress,
+      only,
+      signal: controller.signal
+    })
     await persist(projectPath, stamped)
     announce(stamped, onProgress)
     return stamped
   } catch (e) {
-    const report = fatalReport((e as Error).message)
+    const aborted = controller.signal.aborted
+    const msg = aborted ? '사용자가 실행을 중단했습니다.' : (e as Error).message
+    const report = fatalReport(msg)
     await persist(projectPath, report).catch(() => {})
-    onProgress({ phase: 'devserver', message: report.fatalError!, error: true, done: true })
+    onProgress({ phase: 'devserver', message: msg, error: true, done: true })
     return report
   } finally {
+    activeRuns.delete(projectPath)
     server?.stop()
   }
 }
@@ -297,7 +315,12 @@ async function bootDevServer(
 
 async function runAndStamp(
   projectPath: string,
-  opts: { extraEnv: Record<string, string>; onProgress: (e: ProgressEvent) => void; only?: string }
+  opts: {
+    extraEnv: Record<string, string>
+    onProgress: (e: ProgressEvent) => void
+    only?: string
+    signal?: AbortSignal
+  }
 ): Promise<RunReport> {
   // 실행 전 config 를 최신 템플릿으로 보장 (구버전/손상 방지)
   await writePlaywrightConfig(projectPath)
@@ -305,8 +328,13 @@ async function runAndStamp(
     projectPath,
     onProgress: opts.onProgress,
     extraEnv: opts.extraEnv,
-    only: opts.only
+    only: opts.only,
+    signal: opts.signal
   })
+  // 중단된 경우 Playwright 의 저수준 abort 메시지를 사람 친화적으로 교체
+  if (opts.signal?.aborted) {
+    report.fatalError = '사용자가 실행을 중단했습니다.'
+  }
   return { ...report, startedAt: report.startedAt || new Date().toISOString() }
 }
 
