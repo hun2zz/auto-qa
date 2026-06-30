@@ -82,7 +82,10 @@ async function prepareCoverage(
     projectPath,
     'npm',
     ['run', 'build'],
-    { NODE_OPTIONS: '--max-old-space-size=4096', ...projectEnv },
+    // NODE_ENV=production 강제: Electron(electron-vite dev)은 NODE_ENV=development 로
+    // 돌아 그게 빌드에 상속되면 next build 가 dev/prod 혼재 상태로 빌드돼
+    // /_not-found·/_global-error prerender 가 'useContext null' 로 깨진다.
+    { NODE_OPTIONS: '--max-old-space-size=4096', ...projectEnv, NODE_ENV: 'production' },
     onProgress
   )
   if (build.code !== 0) {
@@ -405,6 +408,7 @@ async function startServer(
     env: {
       ...process.env,
       ...loadProjectEnv(projectPath),
+      NODE_ENV: 'production', // production 빌드 산출물을 서비스하므로
       PORT: port,
       NODE_V8_COVERAGE: covOut,
       NODE_OPTIONS: '--inspect=9230'
