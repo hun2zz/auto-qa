@@ -59,13 +59,16 @@ async function prepareCoverage(
   )
   if (build.code !== 0) {
     for (const r of restorers.reverse()) await r().catch(() => {})
-    const missingEnv = /Missing required environment variable|PrismaConfigEnvError|environment variable[: ]+(\w+)/i.exec(
-      build.tail
-    )
-    const hint = missingEnv
-      ? `빌드에 필요한 환경변수가 없습니다 (예: DATABASE_URL). 프로젝트 루트에 .env 를 만들어 필요한 값을 채워주세요.`
-      : `다른 dev 서버가 떠있거나 메모리 부족일 수 있습니다.`
-    throw new Error(`production 빌드 실패 (code ${build.code}). ${hint}\n${build.tail.slice(-800)}`)
+    const tail = build.tail
+    let hint: string
+    if (/Missing required environment variable|PrismaConfigEnvError/i.test(tail)) {
+      hint = '빌드에 필요한 환경변수가 없습니다 (예: DATABASE_URL). 프로젝트 루트에 .env 를 만들어 필요한 값을 채워주세요.'
+    } else if (/Unable to acquire lock|another instance of next build|\.next[/\\]lock/i.test(tail)) {
+      hint = '다른 빌드 또는 dev 서버가 실행 중입니다 (.next/lock 경합). 그 프로세스를 종료하고 다시 시도하세요.'
+    } else {
+      hint = '다른 dev 서버가 떠있거나 메모리 부족일 수 있습니다.'
+    }
+    throw new Error(`production 빌드 실패 (code ${build.code}). ${hint}\n${tail.slice(-800)}`)
   }
 
   onProgress({ phase: 'devserver', message: '커버리지 서버 기동 중…' })
