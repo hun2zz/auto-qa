@@ -70,7 +70,7 @@ async function prepareCoverage(
   })
   const server = await startServer(projectPath, baseURL, covOut, onProgress)
 
-  const tool = toolPaths()
+  const tool = toolPaths(projectPath)
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     QA_BASE_URL: baseURL,
@@ -88,7 +88,7 @@ async function measureOnce(
 ): Promise<CodeCoverageReport> {
   const specs = await listSpecs(projectPath)
   onProgress({ phase: 'playwright', message: `테스트 ${specs.length}개 실행 + 커버리지 수집 중…` })
-  const tool = toolPaths()
+  const tool = toolPaths(projectPath)
   const pw = await run(
     projectPath,
     tool.cmd,
@@ -448,11 +448,20 @@ interface ToolPaths {
   prefix: string[]
   nodeModules: string
 }
-function toolPaths(): ToolPaths {
+function toolPaths(projectPath: string): ToolPaths {
   const appRoot = resolvePath(import.meta.dirname, '..', '..')
+  // nextcov 가 여기 있으므로 nodeModules(=NODE_PATH 대상)는 항상 auto-qa 번들로 둔다.
   const nodeModules = join(appRoot, 'node_modules')
-  const bin = join(nodeModules, '.bin', process.platform === 'win32' ? 'playwright.cmd' : 'playwright')
-  if (existsSync(bin)) return { cmd: bin, prefix: [], nodeModules }
+  const pwBin = process.platform === 'win32' ? 'playwright.cmd' : 'playwright'
+
+  // 러너 바이너리는 config/spec 의 @playwright/test 와 같은 설치본이어야 한다.
+  // 커버리지는 타겟이 자체 @playwright/test 를 갖는 것이 전제이므로(precondition 체크),
+  // 타겟 바이너리를 우선 사용한다(서로 다른 설치본 → "No tests found" 방지).
+  const targetBin = join(projectPath, 'node_modules', '.bin', pwBin)
+  if (existsSync(targetBin)) return { cmd: targetBin, prefix: [], nodeModules }
+
+  const bundledBin = join(nodeModules, '.bin', pwBin)
+  if (existsSync(bundledBin)) return { cmd: bundledBin, prefix: [], nodeModules }
   return { cmd: 'npx', prefix: ['--yes', 'playwright'], nodeModules }
 }
 
