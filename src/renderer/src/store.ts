@@ -120,6 +120,7 @@ interface AppState {
 
   runTests: (only?: string) => Promise<void>
   runFailedTests: () => Promise<void>
+  rerunTest: (file: string | undefined, title: string, line?: number) => Promise<void>
   applyRunResult: (report: RunReport, isRerun?: boolean) => void
   cancelRun: () => Promise<void>
   loadLastReport: () => Promise<void>
@@ -557,6 +558,26 @@ export const useStore = create<AppState>((set, get) => {
       await withBusy('runTests', async () => {
         const report = await window.api.runFailedTests(project.path)
         get().applyRunResult(report, true)
+      })
+    },
+
+    rerunTest: async (file, title, line) => {
+      const { project } = get()
+      if (!project || !file) return
+      const target = line ? `${file}:${line}` : file
+      await withBusy(`rerun:${file}::${title}`, async () => {
+        const report = await window.api.runTests(project.path, target)
+        if (report.fatalError && report.total === 0) {
+          get().pushToast('error', `재실행 실패: ${report.fatalError}`)
+          return
+        }
+        set({ lastReport: report }) // 백엔드에서 이전 리포트에 병합된 전체
+        const me = report.results.find((r) => r.file === file && r.title === title)
+        const passed = me?.status === 'passed'
+        get().pushToast(
+          passed ? 'success' : 'info',
+          `재실행: ${title.slice(0, 40)} → ${passed ? '통과 ✓' : me?.status === 'skipped' ? '스킵' : '실패'}`
+        )
       })
     },
 

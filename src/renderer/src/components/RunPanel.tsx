@@ -345,6 +345,11 @@ function ResultRow({ result }: { result: TestResult }): JSX.Element {
   const meta = STATUS_META[result.status]
   const expandable = (result.status === 'failed' || result.status === 'timedOut') && !!result.error
 
+  const rerunTest = useStore((s) => s.rerunTest)
+  const running = useStore((s) => !!s.busyKeys['runTests'])
+  const reruning = useStore((s) => !!s.busyKeys[`rerun:${result.file}::${result.title}`])
+  const canRerun = !!result.file
+
   return (
     <div
       className={[
@@ -354,31 +359,44 @@ function ResultRow({ result }: { result: TestResult }): JSX.Element {
           : 'border-border'
       ].join(' ')}
     >
-      <button
-        type="button"
-        disabled={!expandable}
-        onClick={() => setOpen((v) => !v)}
-        className={[
-          'flex w-full items-center gap-3 px-4 py-3 text-left',
-          expandable ? 'cursor-pointer hover:bg-surface-2/50' : 'cursor-default'
-        ].join(' ')}
-      >
-        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
-        <span className="min-w-0 flex-1 truncate text-sm text-text" title={result.title}>
-          {result.title}
-        </span>
-        <span className="shrink-0 font-mono text-[11px] text-muted">
-          {(result.durationMs / 1000).toFixed(2)}s
-        </span>
-        <span className={`shrink-0 text-xs font-medium ${meta.text}`}>{meta.label}</span>
-        {expandable && (
-          <ChevronIcon
-            width={16}
-            height={16}
-            className={`shrink-0 text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-          />
+      <div className="flex items-center">
+        <button
+          type="button"
+          disabled={!expandable}
+          onClick={() => setOpen((v) => !v)}
+          className={[
+            'flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left',
+            expandable ? 'cursor-pointer hover:bg-surface-2/50' : 'cursor-default'
+          ].join(' ')}
+        >
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
+          <span className="min-w-0 flex-1 truncate text-sm text-text" title={result.title}>
+            {result.title}
+          </span>
+          <span className="shrink-0 font-mono text-[11px] text-muted">
+            {(result.durationMs / 1000).toFixed(2)}s
+          </span>
+          <span className={`shrink-0 text-xs font-medium ${meta.text}`}>{meta.label}</span>
+          {expandable && (
+            <ChevronIcon
+              width={16}
+              height={16}
+              className={`shrink-0 text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            />
+          )}
+        </button>
+        {canRerun && (
+          <button
+            type="button"
+            disabled={running || reruning}
+            onClick={() => void rerunTest(result.file, result.title, result.line)}
+            title="이 테스트만 다시 실행"
+            className="shrink-0 border-l border-border px-3 py-3 text-[11px] font-medium text-muted transition-colors hover:bg-surface-2/60 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {reruning ? '실행 중…' : '재실행'}
+          </button>
         )}
-      </button>
+      </div>
       {expandable && open && (
         <pre className="max-h-72 overflow-auto border-t border-border bg-bg px-4 py-3 font-mono text-[11.5px] leading-relaxed text-bad/90">
           {result.error}

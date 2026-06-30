@@ -82,13 +82,20 @@ async function doRun(
       targets,
       signal: controller.signal
     })
-    // 결과가 하나라도 있을 때만 직전 리포트를 덮어쓴다. (부팅/파싱 실패로 0건이면
-    // 기존의 좋은 리포트를 보존 → '실패만 재실행' 실패로 결과가 통째로 0 되는 일 방지)
-    if (!(stamped.fatalError && stamped.total === 0)) {
-      await persist(projectPath, stamped)
+    // 부팅/파싱 실패로 0건이면 기존 리포트를 보존(덮어쓰기 방지).
+    if (stamped.fatalError && stamped.total === 0) {
+      announce(stamped, onProgress)
+      return stamped
     }
-    announce(stamped, onProgress)
-    return stamped
+    // 부분 실행(targets 지정)은 이전 리포트에 '병합' — 재실행 안 한 결과를 잃지 않게.
+    let toSave = stamped
+    if (targets && targets.length) {
+      const prev = await getLastReport(projectPath)
+      if (prev && prev.results.length) toSave = mergeReports(prev, stamped)
+    }
+    await persist(projectPath, toSave)
+    announce(toSave, onProgress)
+    return toSave
   } catch (e) {
     const aborted = controller.signal.aborted
     const msg = aborted ? '사용자가 실행을 중단했습니다.' : (e as Error).message
@@ -424,6 +431,25 @@ function announce(report: RunReport, onProgress: (e: ProgressEvent) => void): vo
     done: true,
     error: Boolean(report.fatalError) || report.failed > 0
   })
+}
+
+/** 부분 실행 결과(partial)를 이전 전체 리포트(prev)에 덮어 병합. 안 돌린 결과는 보존. */
+export function mergeReports(prev: RunReport, partial: RunReport): RunReport {
+  const key = (r: TestResult): string => `${r.file ?? ''}::${r.title}`
+  const updated = new Map(partial.results.map((r) => [key(r), r]))
+  const prevKeys = new Set(prev.results.map(key))
+  const results = prev.results.map((r) => updated.get(key(r)) ?? r)
+  // 이전에 없던(새로 생긴) 결과는 추가
+  for (const r of partial.results) if (!prevKeys.has(key(r))) results.push(r)
+  return {
+    startedAt: partial.startedAt || prev.startedAt,
+    durationMs: partial.durationMs,
+    total: results.length,
+    passed: results.filter((r) => r.status === 'passed').length,
+    failed: results.filter((r) => r.status === 'failed' || r.status === 'timedOut').length,
+    skipped: results.filter((r) => r.status === 'skipped').length,
+    results
+  }
 }
 
 function fatalReport(message: string): RunReport {
