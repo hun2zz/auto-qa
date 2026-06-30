@@ -21,6 +21,19 @@ import { composeRules } from './rules'
 import { healPrompt, rulesHeader } from './prompts'
 import { loadProjectEnv } from './dotenv'
 
+/** url 의 프로토콜/호스트(포트 포함)를 base 의 것으로 교체. 경로/쿼리는 유지. */
+function rewriteHost(url: string, base: string): string {
+  try {
+    const u = new URL(url)
+    const b = new URL(base)
+    u.protocol = b.protocol
+    u.host = b.host
+    return u.toString()
+  } catch {
+    return url
+  }
+}
+
 /** 진행 중인 runTests 의 AbortController (projectPath 별 1개). 중단용. */
 const activeRuns = new Map<string, AbortController>()
 
@@ -77,6 +90,8 @@ async function doRun(
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
     extraEnv.QA_BASE_URL = server.baseURL // dev 서버가 실제로 띄운 포트로 테스트
+    // 로그인 URL 도 실제 서버 포트로 맞춤 (3000 점유 시 3001 등으로 떠도 로그인 성공)
+    if (extraEnv.QA_LOGIN_URL) extraEnv.QA_LOGIN_URL = rewriteHost(extraEnv.QA_LOGIN_URL, server.baseURL)
     const stamped = await runAndStamp(projectPath, {
       extraEnv,
       onProgress,
@@ -125,6 +140,8 @@ export async function healAndRerun(
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
     extraEnv.QA_BASE_URL = server.baseURL // dev 서버가 실제로 띄운 포트로 테스트
+    // 로그인 URL 도 실제 서버 포트로 맞춤 (3000 점유 시 3001 등으로 떠도 로그인 성공)
+    if (extraEnv.QA_LOGIN_URL) extraEnv.QA_LOGIN_URL = rewriteHost(extraEnv.QA_LOGIN_URL, server.baseURL)
 
     // 1차 실행
     let report = await runAndStamp(projectPath, { extraEnv, onProgress })
@@ -250,6 +267,8 @@ export async function negativeControl(
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
     extraEnv.QA_BASE_URL = server.baseURL // dev 서버가 실제로 띄운 포트로 테스트
+    // 로그인 URL 도 실제 서버 포트로 맞춤 (3000 점유 시 3001 등으로 떠도 로그인 성공)
+    if (extraEnv.QA_LOGIN_URL) extraEnv.QA_LOGIN_URL = rewriteHost(extraEnv.QA_LOGIN_URL, server.baseURL)
     await writePlaywrightConfig(projectPath)
 
     onProgress({ phase: 'playwright', message: '기준 실행(통과 테스트 식별) 중…' })
