@@ -23,7 +23,15 @@ import {
   testsPrompt,
   rulesHeader
 } from './prompts'
-import type { CoverageItem, CoverageKind, CoverageReport, CoverageStatus } from '@shared/types'
+import type {
+  AssertionReport,
+  AssertionStrength,
+  AssertionTest,
+  CoverageItem,
+  CoverageKind,
+  CoverageReport,
+  CoverageStatus
+} from '@shared/types'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 import { composeRules, ensureRules } from './rules'
 
@@ -666,6 +674,109 @@ export async function generateAuthSetup(
   })
   if (!res.ok) throw new Error(res.error || '로그인 셋업 생성 실패')
   if (!existsSync(setupOutPath)) throw new Error('auth.setup.ts 가 생성되지 않았습니다.')
+}
+
+// ----------------------------------------------------------------------------
+// 단언 강도 분석 (정적, 실행 없음 — 가짜 단언 방어)
+// ----------------------------------------------------------------------------
+
+// '진짜 값/상태'를 검증하는 강한 matcher
+const STRONG_MATCHERS =
+  /\.(toHaveText|toContainText|toHaveURL|toHaveValue|toHaveCount|toHaveAttribute|toHaveTitle|toHaveClass|toHaveJSProperty|toBeChecked|toBeDisabled|toBeEnabled|toBeHidden|toBeFocused|toHaveScreenshot)\b/
+// 존재 여부만 보는 약한 matcher
+const WEAK_MATCHERS = /\.(toBeVisible|toBeAttached|toBeInViewport|toBeDefined|toBeTruthy)\b/
+
+/** 생성된 테스트의 단언 강도를 정적 분석 (파일 읽기 + 휴리스틱, 사이드이펙트 0) */
+export async function analyzeAssertions(projectPath: string): Promise<AssertionReport> {
+  const dir = testsDir(projectPath)
+  const tests: AssertionTest[] = []
+  if (existsSync(dir)) {
+    const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts'))
+    for (const f of files.sort()) {
+      const src = await fs.readFile(join(dir, f), 'utf8').catch(() => '')
+      for (const t of splitTests(src)) {
+        tests.push(scoreTest(f, t.title, t.fixme, t.body))
+      }
+    }
+  }
+  const strong = tests.filter((t) => t.strength === 'strong').length
+  const weak = tests.filter((t) => t.strength === 'weak').length
+  const vacuous = tests.filter((t) => t.strength === 'vacuous').length
+  const skipped = tests.filter((t) => t.strength === 'skipped').length
+  const active = tests.length - skipped
+  // 약한·공허 먼저 정렬 (고칠 것 위로)
+  const order: Record<AssertionStrength, number> = { vacuous: 0, weak: 1, strong: 2, skipped: 3 }
+  tests.sort((a, b) => order[a.strength] - order[b.strength])
+  return {
+    total: tests.length,
+    strong,
+    weak,
+    vacuous,
+    skipped,
+    strengthPct: active ? Math.round((strong / active) * 1000) / 10 : 0,
+    tests
+  }
+}
+
+interface RawTest {
+  title: string
+  fixme: boolean
+  body: string
+}
+
+/** spec 소스를 개별 test 블록으로 쪼갬 (describe 무시, 중괄호 깊이 추적) */
+function splitTests(src: string): RawTest[] {
+  const out: RawTest[] = []
+  const re = /\btest(\.(fixme|skip|only))?\s*\(\s*(['"`])([\s\S]*?)\3/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(src)) !== null) {
+    const fixme = m[2] === 'fixme' || m[2] === 'skip'
+    const title = m[4]
+    // 본문: 이 test 의 callback 시작부터 다음 test 까지 (대략) — 다음 test( 위치까지
+    const start = re.lastIndex
+    re.lastIndex = start // 다음 검색 위치 보존
+    const nextIdx = src.slice(start).search(/\btest(\.(fixme|skip|only))?\s*\(/)
+    const body = nextIdx === -1 ? src.slice(start) : src.slice(start, start + nextIdx)
+    out.push({ title, fixme, body })
+  }
+  return out
+}
+
+function scoreTest(spec: string, title: string, fixme: boolean, body: string): AssertionTest {
+  if (fixme) {
+    return { spec, title, strength: 'skipped', assertions: 0, reason: 'test.fixme/skip (비활성)' }
+  }
+  const expects = (body.match(/\bexpect\s*\(/g) || []).length
+  const hasStrong = STRONG_MATCHERS.test(body)
+  const hasWeak = WEAK_MATCHERS.test(body)
+  // 리터럴을 단언하는 공허한 expect (expect(true).toBeTruthy() 등)
+  const trivialCount = (body.match(/\bexpect\s*\(\s*(true|false|\d+)\s*\)/g) || []).length
+
+  if (expects === 0) {
+    return { spec, title, strength: 'vacuous', assertions: 0, reason: 'expect 단언이 없음' }
+  }
+  if (trivialCount >= expects) {
+    return {
+      spec,
+      title,
+      strength: 'vacuous',
+      assertions: expects,
+      reason: '모든 단언이 리터럴(expect(true) 등) — 아무것도 검증 안 함'
+    }
+  }
+  if (hasStrong) {
+    return { spec, title, strength: 'strong', assertions: expects }
+  }
+  if (hasWeak) {
+    return {
+      spec,
+      title,
+      strength: 'weak',
+      assertions: expects,
+      reason: '존재 여부만 확인(toBeVisible 등) — 값/상태 단언 없음'
+    }
+  }
+  return { spec, title, strength: 'weak', assertions: expects, reason: '강한 단언 미검출' }
 }
 
 // ----------------------------------------------------------------------------

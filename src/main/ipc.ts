@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC, type ProgressEvent } from '@shared/types'
 import {
   addRequirementText,
+  analyzeAssertions,
   analyzeSeed,
   approveAllChecklists,
   approveChecklist,
@@ -144,6 +145,9 @@ export function registerIpc(): void {
     const config = await getConfig(projectPath)
     return generateAllTests(projectPath, config.baseURL, progressSender(e))
   })
+  ipcMain.handle(IPC.analyzeAssertions, (_e, projectPath: string) =>
+    analyzeAssertions(projectPath)
+  )
   ipcMain.handle(IPC.generateCodeTests, (e, projectPath: string) =>
     generateCodeTests(projectPath, progressSender(e))
   )

@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import type { Checklist } from '@shared/types'
+import type { AssertionReport, AssertionStrength, Checklist } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
@@ -11,6 +11,9 @@ export function TestsPanel(): JSX.Element {
   const generatingAll = useStore((s) => !!s.busyKeys['generateAllTests'])
   const generateCodeTests = useStore((s) => s.generateCodeTests)
   const generatingCode = useStore((s) => !!s.busyKeys['generateCodeTests'])
+  const analyzeAssertions = useStore((s) => s.analyzeAssertions)
+  const analyzingAssert = useStore((s) => !!s.busyKeys['analyzeAssertions'])
+  const assertionReport = useStore((s) => s.assertionReport)
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
 
@@ -24,6 +27,14 @@ export function TestsPanel(): JSX.Element {
         desc="① 요구사항 기준(정확성) · ② 코드 기준(회귀·커버리지, 요구사항에 없는 것 포함) 두 종류를 만듭니다."
         action={
           <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              loading={analyzingAssert}
+              loadingText="분석 중…"
+              onClick={() => analyzeAssertions()}
+            >
+              단언 강도 분석
+            </Button>
             <Button
               variant="secondary"
               icon={<FlaskIcon width={14} height={14} />}
@@ -48,6 +59,11 @@ export function TestsPanel(): JSX.Element {
         }
       />
       <PanelBody>
+        {assertionReport && (
+          <div className="mb-5">
+            <AssertionStrengthReport report={assertionReport} />
+          </div>
+        )}
         {checklists.length === 0 ? (
           <EmptyState
             icon={<FlaskIcon width={26} height={26} />}
@@ -166,4 +182,69 @@ function TestRow({ checklist }: { checklist: Checklist }): JSX.Element {
       </div>
     </div>
   )
+}
+
+function AssertionStrengthReport({ report }: { report: AssertionReport }): JSX.Element {
+  // 약함·공허 먼저 (이미 백엔드 정렬). 강함/스킵은 접어서 요약만.
+  const weakOrVacuous = report.tests.filter(
+    (t) => t.strength === 'weak' || t.strength === 'vacuous'
+  )
+  return (
+    <article className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <h3 className="text-sm font-medium text-text">단언 강도</h3>
+          <p className="mt-0.5 text-[11px] text-muted">
+            테스트가 '진짜 값/상태'를 검증하나 (커버리지보다 중요한 지표 · 정적 분석)
+          </p>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-semibold text-text">{report.strengthPct}%</span>
+          <span className="text-[11px] text-muted">강한 단언</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 px-5 pb-3">
+        <Badge tone="ok">강함 {report.strong}</Badge>
+        <Badge tone="warn">약함 {report.weak}</Badge>
+        <Badge tone="bad">공허 {report.vacuous}</Badge>
+        <Badge tone="muted">스킵 {report.skipped}</Badge>
+        <Badge tone="muted">전체 {report.total}</Badge>
+      </div>
+      {weakOrVacuous.length > 0 && (
+        <div className="border-t border-border bg-surface-2/30 px-5 py-4">
+          <p className="mb-2 text-[11.5px] font-medium text-text">
+            고쳐야 할 약한·공허 단언 ({weakOrVacuous.length})
+            <span className="font-normal text-muted"> — 강한 값 단언으로 재생성하세요</span>
+          </p>
+          <ul className="max-h-72 space-y-1.5 overflow-y-auto">
+            {weakOrVacuous.map((t, i) => (
+              <li
+                key={i}
+                className={`rounded-lg border px-3 py-2 ${ASTONE[t.strength].box}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10.5px] font-semibold ${ASTONE[t.strength].label}`}>
+                    {ASTONE[t.strength].text}
+                  </span>
+                  <span className="truncate text-[12px] text-text" title={t.title}>
+                    {t.title}
+                  </span>
+                </div>
+                <p className="mt-0.5 font-mono text-[10.5px] text-muted">
+                  {t.spec} · {t.reason}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </article>
+  )
+}
+
+const ASTONE: Record<AssertionStrength, { text: string; label: string; box: string }> = {
+  strong: { text: '강함', label: 'text-ok', box: 'border-ok/30 bg-ok/5' },
+  weak: { text: '약함', label: 'text-warn', box: 'border-warn/30 bg-warn/5' },
+  vacuous: { text: '공허', label: 'text-bad', box: 'border-bad/30 bg-bad/5' },
+  skipped: { text: '스킵', label: 'text-muted', box: 'border-border bg-surface' }
 }

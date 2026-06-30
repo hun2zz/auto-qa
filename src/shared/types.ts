@@ -137,6 +137,34 @@ export interface CodeCoverageReport {
   fatalError?: string
 }
 
+// ----------------------------------------------------------------------------
+// 단언 강도 분석 (생성된 테스트가 '진짜 값'을 검증하나 — 가짜 단언 방어)
+// ----------------------------------------------------------------------------
+
+export type AssertionStrength = 'strong' | 'weak' | 'vacuous' | 'skipped'
+
+export interface AssertionTest {
+  spec: string
+  title: string
+  strength: AssertionStrength
+  /** expect 개수 */
+  assertions: number
+  /** 약함/공허 사유 */
+  reason?: string
+}
+
+export interface AssertionReport {
+  total: number
+  strong: number
+  weak: number
+  vacuous: number
+  skipped: number
+  /** 강한 단언 비율 = strong / (전체 - skipped) */
+  strengthPct: number
+  /** 약하거나 공허한 테스트(고쳐야 할 것) 먼저 */
+  tests: AssertionTest[]
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -239,6 +267,7 @@ export const IPC = {
   generateTests: 'tests:generate',
   generateAllTests: 'tests:generateAll',
   generateCodeTests: 'tests:generateCode',
+  analyzeAssertions: 'tests:assertionStrength',
   runTests: 'tests:run',
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
@@ -346,6 +375,8 @@ export interface AutoQaApi {
   generateAllTests(projectPath: string): Promise<Checklist[]>
   /** [AI] 코드 기준 characterization(회귀+커버리지) 테스트 생성. 반환=생성 파일 수 */
   generateCodeTests(projectPath: string): Promise<number>
+  /** [정적] 생성된 테스트의 단언 강도 분석 (실행 없음) */
+  analyzeAssertions(projectPath: string): Promise<AssertionReport>
 
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
   runTests(projectPath: string, only?: string): Promise<RunReport>

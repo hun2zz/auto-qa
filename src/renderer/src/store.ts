@@ -12,7 +12,8 @@ import type {
   RuleFile,
   CoverageReport,
   CoverageKind,
-  CodeCoverageReport
+  CodeCoverageReport,
+  AssertionReport
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -103,6 +104,8 @@ interface AppState {
   generateTests: (checklistId: string) => Promise<void>
   generateAllTests: () => Promise<void>
   generateCodeTests: () => Promise<void>
+  assertionReport: AssertionReport | null
+  analyzeAssertions: () => Promise<void>
 
   runTests: (only?: string) => Promise<void>
   loadLastReport: () => Promise<void>
@@ -157,6 +160,7 @@ export const useStore = create<AppState>((set, get) => {
     coverageReports: [],
     codeCoverage: null,
     knownWorld: '',
+    assertionReport: null,
 
     activeStep: 'requirements',
     configOpen: false,
@@ -443,6 +447,19 @@ export const useStore = create<AppState>((set, get) => {
       await withBusy('generateCodeTests', async () => {
         const n = await window.api.generateCodeTests(project.path)
         get().pushToast('success', `코드 기준 테스트 ${n}개 파일 생성 (회귀·커버리지)`)
+      })
+    },
+
+    analyzeAssertions: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('analyzeAssertions', async () => {
+        const assertionReport = await window.api.analyzeAssertions(project.path)
+        set({ assertionReport })
+        get().pushToast(
+          assertionReport.vacuous > 0 ? 'info' : 'success',
+          `단언 강도 ${assertionReport.strengthPct}% · 공허 ${assertionReport.vacuous} · 약함 ${assertionReport.weak}`
+        )
       })
     },
 
