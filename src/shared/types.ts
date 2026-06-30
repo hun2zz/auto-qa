@@ -183,6 +183,29 @@ export interface SelectorValidation {
   invented: { spec: string; selector: string }[]
 }
 
+// ----------------------------------------------------------------------------
+// negative-control: 기대값을 틀리게 변형 → 빨간불 떠야 진짜 검증
+// ----------------------------------------------------------------------------
+
+export type SensitivityVerdict = 'sensitive' | 'vacuous' | 'no-assertion'
+
+export interface SensitivitySpec {
+  spec: string
+  verdict: SensitivityVerdict
+  /** 변형한 단언 수 */
+  mutations: number
+}
+
+export interface NegativeControlReport {
+  tested: number
+  /** 변형 시 빨간불 = 진짜 검증함 */
+  sensitive: number
+  /** 변형해도 통과 = 알맹이 없음 */
+  vacuous: number
+  specs: SensitivitySpec[]
+  fatalError?: string
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -289,6 +312,7 @@ export const IPC = {
   rebuildIndex: 'index:build',
   validateSelectors: 'index:validate',
   runTests: 'tests:run',
+  negativeControl: 'tests:negativeControl',
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
   getCoverageReports: 'coverage:list',
@@ -404,6 +428,8 @@ export interface AutoQaApi {
 
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
   runTests(projectPath: string, only?: string): Promise<RunReport>
+  /** [무거움] 통과 테스트의 기대값을 틀리게 변형해 재실행 → 진짜 검증하는지(sensitive) 확인 */
+  negativeControl(projectPath: string): Promise<NegativeControlReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
 
   /** [AI] 요구사항 항목별 구현/테스트검증 여부 감사 → 완료율 + gap 리포트 (브라우저 불필요) */

@@ -2,7 +2,7 @@ import { useState, type JSX } from 'react'
 import type { HealResult, RunReport, TestResult, TestStatus } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
-import { PanelHeader, PanelBody, EmptyState } from './common'
+import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
 import { PlayIcon, AlertIcon, ChevronIcon, SparkleIcon } from './icons'
 
 export function RunPanel(): JSX.Element {
@@ -52,6 +52,51 @@ export function RunPanel(): JSX.Element {
         )}
       </PanelBody>
     </>
+  )
+}
+
+function NegativeControlBlock(): JSX.Element {
+  const run = useStore((s) => s.runNegativeControl)
+  const busy = useStore((s) => !!s.busyKeys['negativeControl'])
+  const report = useStore((s) => s.negativeControl)
+  const bad = report?.specs.filter((s) => s.verdict === 'vacuous') ?? []
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-text">기대값 변형 검증 (negative-control)</h3>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+            통과 테스트의 기대값을 일부러 틀리게 바꿔 재실행 → 빨간불이 떠야 '진짜 검증'.
+            그래도 통과하면 알맹이 없는 테스트. (무거움 · 끝나면 원본 복원)
+          </p>
+        </div>
+        <Button variant="secondary" loading={busy} loadingText="검증 중… (무거움)" onClick={() => void run()}>
+          변형 검증 실행
+        </Button>
+      </div>
+      {report && !report.fatalError && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone="ok">진짜 검증 {report.sensitive}</Badge>
+            <Badge tone="bad">알맹이없음 {report.vacuous}</Badge>
+            <Badge tone="muted">검사 {report.tested}</Badge>
+          </div>
+          {bad.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {bad.map((s, i) => (
+                <li key={i} className="font-mono text-[11px] text-bad">
+                  ✗ {s.spec} — 기대값 틀려도 통과 (검증 안 함)
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {report?.fatalError && (
+        <p className="mt-2 whitespace-pre-wrap text-[11.5px] text-bad">{report.fatalError}</p>
+      )}
+    </div>
   )
 }
 
@@ -217,6 +262,9 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
 
       {/* self-healing */}
       <SelfHealing report={report} />
+
+      {/* negative-control: 기대값 변형 검증 */}
+      <NegativeControlBlock />
 
       {/* 결과 목록 */}
       {report.results.length > 0 && (

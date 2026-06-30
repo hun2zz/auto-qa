@@ -9,6 +9,7 @@ import type {
   ProgressPhase,
   AuthStatus,
   HealResult,
+  NegativeControlReport,
   RuleFile,
   CoverageReport,
   CoverageKind,
@@ -51,6 +52,7 @@ interface AppState {
   lastReport: RunReport | null
   authStatus: AuthStatus | null
   lastHeal: HealResult | null
+  negativeControl: NegativeControlReport | null
   rules: RuleFile[]
   coverageReports: CoverageReport[]
   codeCoverage: CodeCoverageReport | null
@@ -122,6 +124,7 @@ interface AppState {
   setAuthSecret: (password: string) => Promise<void>
   generateAuthSetup: (config?: QaConfig) => Promise<void>
   healAndRerun: () => Promise<void>
+  runNegativeControl: () => Promise<void>
 }
 
 let logSeq = 0
@@ -159,6 +162,7 @@ export const useStore = create<AppState>((set, get) => {
     lastReport: null,
     authStatus: null,
     lastHeal: null,
+    negativeControl: null,
     rules: [],
     coverageReports: [],
     codeCoverage: null,
@@ -603,6 +607,23 @@ export const useStore = create<AppState>((set, get) => {
           get().pushToast('info', '자동 수정할 수 있는 항목이 없었습니다')
         } else {
           get().pushToast('info', '실패한 테스트가 없습니다')
+        }
+      })
+    },
+
+    runNegativeControl: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('negativeControl', async () => {
+        const negativeControl = await window.api.negativeControl(project.path)
+        set({ negativeControl })
+        if (negativeControl.fatalError) {
+          get().pushToast('error', `검증 실패: ${negativeControl.fatalError}`)
+        } else {
+          get().pushToast(
+            negativeControl.vacuous > 0 ? 'error' : 'success',
+            `진짜 검증 ${negativeControl.sensitive} · 알맹이없음 ${negativeControl.vacuous}`
+          )
         }
       })
     }

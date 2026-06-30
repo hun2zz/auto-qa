@@ -35,6 +35,7 @@ const api: AutoQaApi = {
   validateSelectors: (p) => ipcRenderer.invoke(IPC.validateSelectors, p),
 
   runTests: (p, only) => ipcRenderer.invoke(IPC.runTests, p, only),
+  negativeControl: (p) => ipcRenderer.invoke(IPC.negativeControl, p),
   getLastReport: (p) => ipcRenderer.invoke(IPC.getLastReport, p),
 
   auditCoverage: (p, requirementName, kind) =>

@@ -6,8 +6,10 @@ import type {
   HealChange,
   HealResult,
   HealVerdict,
+  NegativeControlReport,
   ProgressEvent,
   RunReport,
+  SensitivitySpec,
   TestResult
 } from '@shared/types'
 import { getConfig, lastReportPath, qaDir, testsDir, writePlaywrightConfig } from './projectManager'
@@ -167,6 +169,97 @@ function lineDiff(before: string, after: string): string {
 // ----------------------------------------------------------------------------
 // 헬퍼
 // ----------------------------------------------------------------------------
+
+/**
+ * [negative-control] 통과하는 테스트의 기대값을 틀리게 변형 → 재실행.
+ * 빨간불 = 진짜 검증(sensitive), 그래도 통과 = 알맹이 없음(vacuous). 끝나면 원본 복원.
+ */
+export async function negativeControl(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<NegativeControlReport> {
+  let server: DevServerHandle | null = null
+  try {
+    server = await bootDevServer(projectPath, onProgress)
+    await runSeedIfEnabled(projectPath, onProgress)
+    const extraEnv = await qaEnv(projectPath)
+    await writePlaywrightConfig(projectPath)
+
+    onProgress({ phase: 'playwright', message: '기준 실행(통과 테스트 식별) 중…' })
+    const baseline = await runPlaywright({ projectPath, onProgress, extraEnv })
+    if (baseline.fatalError) return ncFail(baseline.fatalError)
+    const passingFiles = [
+      ...new Set(baseline.results.filter((r) => r.status === 'passed').map((r) => r.file))
+    ].filter((f): f is string => !!f)
+
+    const specs: SensitivitySpec[] = []
+    for (const file of passingFiles.slice(0, 8)) {
+      const specPath = resolveSpecPath(projectPath, file)
+      if (!specPath) continue
+      const before = await fs.readFile(specPath, 'utf8').catch(() => '')
+      const { mutated, count } = mutateExpectations(before)
+      if (count === 0) {
+        specs.push({ spec: file, verdict: 'no-assertion', mutations: 0 })
+        continue
+      }
+      onProgress({ phase: 'playwright', message: `변형 검증: ${file}` })
+      await fs.writeFile(specPath, mutated, 'utf8')
+      try {
+        const r = await runPlaywright({ projectPath, onProgress, extraEnv, only: file })
+        specs.push({ spec: file, verdict: r.failed > 0 ? 'sensitive' : 'vacuous', mutations: count })
+      } finally {
+        await fs.writeFile(specPath, before, 'utf8') // 원본 복원 (사이드이펙트 0)
+      }
+    }
+
+    const sensitive = specs.filter((s) => s.verdict === 'sensitive').length
+    const vacuous = specs.filter((s) => s.verdict === 'vacuous').length
+    // 알맹이 없는 것 먼저
+    const ord: Record<SensitivitySpec['verdict'], number> = { vacuous: 0, 'no-assertion': 1, sensitive: 2 }
+    specs.sort((a, b) => ord[a.verdict] - ord[b.verdict])
+    onProgress({
+      phase: 'playwright',
+      message: `검증 ${specs.length} · 진짜 ${sensitive} · 알맹이없음 ${vacuous}`,
+      done: true,
+      error: vacuous > 0
+    })
+    return { tested: specs.length, sensitive, vacuous, specs }
+  } catch (e) {
+    return ncFail((e as Error).message)
+  } finally {
+    server?.stop()
+  }
+}
+
+function ncFail(msg: string): NegativeControlReport {
+  return { tested: 0, sensitive: 0, vacuous: 0, specs: [], fatalError: msg }
+}
+
+/** 강한 단언의 '기대값'을 명백히 틀린 값으로 변형 (진짜 테스트면 빨간불) */
+function mutateExpectations(src: string): { mutated: string; count: number } {
+  let count = 0
+  let out = src
+  out = out.replace(
+    /\.(toHaveText|toContainText|toHaveValue|toHaveTitle|toHaveAttribute)\(\s*(['"`])(?:(?!\2).)*\2/g,
+    (_m, fn, q) => {
+      count++
+      return `.${fn}(${q}__QA_MUTANT_${count}__${q}`
+    }
+  )
+  out = out.replace(/\.toHaveURL\(\s*(['"`])(?:(?!\1).)*\1/g, (_m, q) => {
+    count++
+    return `.toHaveURL(${q}/__qa_mutant_no_match__${q}`
+  })
+  out = out.replace(/\.toHaveURL\(\s*\/(?:[^/\\]|\\.)*\//g, () => {
+    count++
+    return `.toHaveURL(/__qa_mutant_no_match_xyz__/`
+  })
+  out = out.replace(/\.toHaveCount\(\s*(\d+)\s*\)/g, (_m, n) => {
+    count++
+    return `.toHaveCount(${parseInt(n, 10) + 99999})`
+  })
+  return { mutated: out, count }
+}
 
 /** opt-in 시드 명령 실행 (config.seed.enabled 일 때만). 파괴적이므로 사용자가 명시 활성화해야 함. */
 async function runSeedIfEnabled(
