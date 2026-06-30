@@ -578,11 +578,12 @@ export async function generateTests(
   if (!existsSync(specOutPath)) throw new Error('테스트 spec 파일이 생성되지 않았습니다.')
 
   const updated: Checklist = { ...checklist, specPath: specRel }
-  await fs.writeFile(
-    join(checklistDir(projectPath), `${checklistId}.md`),
-    serializeChecklist(updated),
-    'utf8'
-  )
+  // specPath 기록은 '내용 변경'이 아니라 부기(bookkeeping)다. 이 저장으로 체크리스트
+  // mtime 이 spec 보다 나중이 되면, 방금 만든 테스트가 즉시 'specStale(재생성 필요)' 로
+  // 잡힌다. 따라서 저장 후 체크리스트 mtime 을 원래대로 복원해 의미 없는 stale 을 막는다.
+  const before = await fs.stat(checklistPath).catch(() => null)
+  await fs.writeFile(checklistPath, serializeChecklist(updated), 'utf8')
+  if (before) await fs.utimes(checklistPath, before.atime, before.mtime).catch(() => {})
   return updated
 }
 
