@@ -125,6 +125,7 @@ interface AppState {
   generateAuthSetup: (config?: QaConfig) => Promise<void>
   healAndRerun: () => Promise<void>
   runNegativeControl: () => Promise<void>
+  scaffoldCI: () => Promise<void>
 }
 
 let logSeq = 0
@@ -608,6 +609,20 @@ export const useStore = create<AppState>((set, get) => {
         } else {
           get().pushToast('info', '실패한 테스트가 없습니다')
         }
+      })
+    },
+
+    scaffoldCI: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('scaffoldCI', async () => {
+        const r = await window.api.scaffoldCI(project.path)
+        get().pushToast(
+          'success',
+          r.written.length
+            ? `CI 파일 생성: ${r.written.join(', ')}`
+            : `이미 존재 (건너뜀: ${r.skipped.join(', ')})`
+        )
       })
     },
 

@@ -11,6 +11,8 @@ export function RunPanel(): JSX.Element {
   const running = useStore((s) => !!s.busyKeys['runTests'])
   const checklists = useStore((s) => s.checklists)
   const hasSpecs = checklists.some((c) => c.specPath)
+  const scaffoldCI = useStore((s) => s.scaffoldCI)
+  const scaffolding = useStore((s) => !!s.busyKeys['scaffoldCI'])
 
   const runBtn = (
     <Button
@@ -27,13 +29,22 @@ export function RunPanel(): JSX.Element {
     </Button>
   )
 
+  const headerAction = (
+    <div className="flex items-center gap-2">
+      <Button variant="secondary" loading={scaffolding} loadingText="생성 중…" onClick={() => scaffoldCI()}>
+        CI 파일 생성
+      </Button>
+      {runBtn}
+    </div>
+  )
+
   return (
     <>
       <PanelHeader
         step={4}
         title="실행 & 리포트"
-        desc="dev 서버를 구동하고 Playwright 테스트를 실행한 뒤 결과를 확인합니다."
-        action={lastReport ? runBtn : undefined}
+        desc="dev 서버를 구동하고 Playwright 테스트를 실행. 'CI 파일 생성'으로 PR 자동 게이트도 만듭니다."
+        action={lastReport ? headerAction : undefined}
       />
       <PanelBody>
         {!lastReport ? (

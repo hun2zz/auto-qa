@@ -31,6 +31,7 @@ import { getLastReport, healAndRerun, negativeControl, runTests } from './lib/ru
 import { getAuthStatus, setAuthSecret } from './lib/auth'
 import { getCodeCoverage, runCodeCoverage, runCoverageLoop } from './lib/codeCoverage'
 import { buildIndex, validateSelectors } from './lib/codeIndex'
+import { scaffoldCI } from './lib/ciScaffold'
 
 /** 진행 이벤트를 호출한 창으로 전달 */
 function progressSender(e: Electron.IpcMainInvokeEvent): (p: ProgressEvent) => void {
@@ -82,6 +83,8 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.saveRule, (_e, projectPath: string, name: string, content: string) =>
     saveRule(projectPath, name, content)
   )
+
+  ipcMain.handle(IPC.scaffoldCI, (_e, projectPath: string) => scaffoldCI(projectPath))
 
   ipcMain.handle(IPC.resetProject, async (e, projectPath: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)!

@@ -206,6 +206,12 @@ export interface NegativeControlReport {
   fatalError?: string
 }
 
+/** CI 스캐폴드 결과 */
+export interface CiScaffoldResult {
+  written: string[]
+  skipped: string[]
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -294,6 +300,7 @@ export const IPC = {
   listRules: 'rules:list',
   saveRule: 'rules:save',
   resetProject: 'project:reset',
+  scaffoldCI: 'project:scaffoldCI',
   analyzeSeed: 'seed:analyze',
   getKnownWorld: 'seed:get',
   saveKnownWorld: 'seed:save',
@@ -383,6 +390,8 @@ export interface AutoQaApi {
   reopenProject(path: string): Promise<ProjectInfo | null>
   /** 생성물 삭제 (네이티브 확인 다이얼로그). 반환=수행한 범위 또는 'cancel' */
   resetProject(projectPath: string): Promise<'generated' | 'all' | 'cancel'>
+  /** CI 게이트 파일(.qa/ci/run.mjs + .github/workflows/qa.yml) 생성 (덮어쓰지 않음) */
+  scaffoldCI(projectPath: string): Promise<CiScaffoldResult>
 
   /** [AI] 프로젝트의 시드 스크립트/스키마를 분석해 'known-world'(시드된 결정적 상태) 문서 생성 + setupCommand 제안. 파괴적 실행 없음 */
   analyzeSeed(projectPath: string): Promise<{ knownWorld: string; suggestedCommand: string }>
