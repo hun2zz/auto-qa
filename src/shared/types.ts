@@ -331,6 +331,7 @@ export const IPC = {
   saveRule: 'rules:save',
   resetProject: 'project:reset',
   analyzeSeed: 'seed:analyze',
+  generateSeed: 'seed:generate',
   getKnownWorld: 'seed:get',
   saveKnownWorld: 'seed:save',
   listRequirements: 'req:list',
@@ -426,6 +427,8 @@ export interface AutoQaApi {
 
   /** [AI] 프로젝트의 시드 스크립트/스키마를 분석해 'known-world'(시드된 결정적 상태) 문서 생성 + setupCommand 제안. 파괴적 실행 없음 */
   analyzeSeed(projectPath: string): Promise<{ knownWorld: string; suggestedCommand: string }>
+  /** [AI] DB 스키마 → 테스트 시드 스크립트(.qa/seed/seed.mjs) 생성. 반환=실행 명령 */
+  generateSeed(projectPath: string): Promise<{ scriptRel: string; command: string }>
   /** .qa/seed/known-world.md 내용 (없으면 빈 문자열) */
   getKnownWorld(projectPath: string): Promise<string>
   saveKnownWorld(projectPath: string, content: string): Promise<void>

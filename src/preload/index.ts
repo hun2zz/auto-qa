@@ -9,6 +9,7 @@ const api: AutoQaApi = {
   reopenProject: (path) => ipcRenderer.invoke(IPC.reopenProject, path),
   resetProject: (p) => ipcRenderer.invoke(IPC.resetProject, p),
   analyzeSeed: (p) => ipcRenderer.invoke(IPC.analyzeSeed, p),
+  generateSeed: (p) => ipcRenderer.invoke(IPC.generateSeed, p),
   getKnownWorld: (p) => ipcRenderer.invoke(IPC.getKnownWorld, p),
   saveKnownWorld: (p, content) => ipcRenderer.invoke(IPC.saveKnownWorld, p, content),
   getConfig: (p) => ipcRenderer.invoke(IPC.getConfig, p),

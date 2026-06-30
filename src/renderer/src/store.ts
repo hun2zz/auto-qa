@@ -95,6 +95,7 @@ interface AppState {
   loadKnownWorld: () => Promise<void>
   saveKnownWorld: (content: string) => Promise<void>
   analyzeSeed: () => Promise<string>
+  generateSeed: () => Promise<string>
 
   uploadRequirement: () => Promise<void>
   addRequirementText: (title: string, content: string) => Promise<boolean>
@@ -353,6 +354,18 @@ export const useStore = create<AppState>((set, get) => {
         get().pushToast('success', '시드 분석 완료 — known-world 생성됨')
       })
       return suggested
+    },
+
+    generateSeed: async () => {
+      const { project } = get()
+      if (!project) return ''
+      let command = ''
+      await withBusy('generateSeed', async () => {
+        const res = await window.api.generateSeed(project.path)
+        command = res.command
+        get().pushToast('success', `시드 스크립트 생성: ${res.scriptRel}`)
+      })
+      return command
     },
 
     saveRule: async (name, content) => {

@@ -19,6 +19,7 @@ import { runClaude } from './claudeRunner'
 import { authEnv } from './auth'
 import { composeRules } from './rules'
 import { healPrompt, rulesHeader } from './prompts'
+import { loadProjectEnv } from './dotenv'
 
 /** 진행 중인 runTests 의 AbortController (projectPath 별 1개). 중단용. */
 const activeRuns = new Map<string, AbortController>()
@@ -337,7 +338,13 @@ async function runSeedIfEnabled(
   if (!cmd) return
   onProgress({ phase: 'devserver', message: `시드 실행: ${cmd}` })
   await new Promise<void>((resolve) => {
-    const c = spawn(cmd, { cwd: projectPath, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const c = spawn(cmd, {
+      cwd: projectPath,
+      shell: true,
+      // 시드 스크립트가 DATABASE_URL 등을 쓰므로 프로젝트 .env 를 주입한다.
+      env: { ...process.env, ...loadProjectEnv(projectPath) },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
     const onData = (d: Buffer): void =>
       onProgress({ phase: 'devserver', message: '시드…', log: d.toString().trimEnd() })
     c.stdout?.on('data', onData)

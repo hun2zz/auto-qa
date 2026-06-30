@@ -24,8 +24,10 @@ export function ConfigModal(): JSX.Element | null {
 
   const knownWorld = useStore((s) => s.knownWorld)
   const analyzeSeed = useStore((s) => s.analyzeSeed)
+  const generateSeed = useStore((s) => s.generateSeed)
   const saveKnownWorld = useStore((s) => s.saveKnownWorld)
   const analyzingSeed = useStore((s) => !!s.busyKeys['analyzeSeed'])
+  const generatingSeed = useStore((s) => !!s.busyKeys['generateSeed'])
   const savingKW = useStore((s) => !!s.busyKeys['saveKnownWorld'])
   const [seedEnabled, setSeedEnabled] = useState(!!config?.seed?.enabled)
   const [kwDraft, setKwDraft] = useState('')
@@ -95,6 +97,14 @@ export function ConfigModal(): JSX.Element | null {
   async function handleAnalyzeSeed(): Promise<void> {
     const suggested = await analyzeSeed()
     if (suggested) updateSeed(suggested)
+  }
+
+  async function handleGenerateSeed(): Promise<void> {
+    const command = await generateSeed()
+    if (command) {
+      setSeedEnabled(true)
+      updateSeed(command) // 생성한 시드 스크립트를 setup 명령으로 자동 설정
+    }
   }
 
   function handleSave(): void {
@@ -280,8 +290,8 @@ export function ConfigModal(): JSX.Element | null {
             </div>
 
             <div className="mt-4 space-y-4 border-t border-border pt-4">
-              <Field label="시드 분석 (AI)" hint="DB 실행 없이 분석만">
-                <div className="flex items-center gap-2">
+              <Field label="시드 (AI)" hint="분석은 읽기만 · 생성은 시드 스크립트 작성">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="secondary"
                     icon={<SparkleIcon width={14} height={14} />}
@@ -289,10 +299,19 @@ export function ConfigModal(): JSX.Element | null {
                     loadingText="분석 중…"
                     onClick={() => void handleAnalyzeSeed()}
                   >
-                    시드 스크립트 분석
+                    시드 분석
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon={<SparkleIcon width={14} height={14} />}
+                    loading={generatingSeed}
+                    loadingText="생성 중…"
+                    onClick={() => void handleGenerateSeed()}
+                  >
+                    시드 데이터 생성
                   </Button>
                   <span className="text-[11px] text-muted">
-                    prisma/seed·스키마를 읽어 known-world 생성
+                    스키마를 읽어 .qa/seed/seed.mjs 작성 → setup 명령 자동 설정
                   </span>
                 </div>
               </Field>

@@ -62,6 +62,30 @@ export function seedAnalysisPrompt(args: { outPath: string }): string {
 - 파일만 쓰고, result 의 마지막 줄에 "SETUP: <추정 명령>" 한 줄을 적는다.`
 }
 
+export function seedScriptPrompt(args: { seedDir: string; outFile: string }): string {
+  return `너는 테스트 시드 데이터 엔지니어다. 이 프로젝트의 DB 스키마를 읽고, E2E 테스트가 의존하는 '최소한의 현실적인' 시드 데이터를 넣는 실행 가능한 스크립트를 만든다.
+
+# 작업
+1. DB 스키마/ORM 을 Read/Grep 으로 파악한다: prisma/schema.prisma, drizzle, 기존 prisma client 위치(lib/prisma, db, server/db 등), package.json.
+2. 각 모델/테이블에 최소 1~3건의 '현실적인' 테스트 데이터를 넣는 스크립트를 작성한다:
+   - 관계/외래키 순서를 지켜 삽입 (부모 먼저).
+   - **재실행 안전(idempotent)**: 넣기 전에 해당 테스트 데이터를 비우거나(deleteMany) upsert 로 처리해, 여러 번 돌려도 중복/오류가 없게.
+   - 프로젝트의 **기존 client 를 재사용**한다 (예: import { PrismaClient } from '@prisma/client' 또는 프로젝트의 lib/prisma). 새 ORM 도입 금지.
+   - **DATABASE_URL 은 환경변수에서 읽는다 (절대 하드코딩 금지)**. 실행 시 .env 가 주입된다고 가정.
+   - 끝에 한 번 client.\$disconnect() 호출하고, 성공 시 넣은 건수를 console.log 한다.
+   - 에러 시 비-0 종료 (process.exit(1)).
+
+# 출력
+- 파일 1개만 Write: ${args.outFile}
+- 모듈 형식은 프로젝트 package.json 의 "type" 에 맞춘다. 불확실하면 ESM(.mjs 확장자라 import 사용).
+- 파일 맨 위에 주석으로 경고: "// ⚠️ 테스트 DB 전용. DATABASE_URL 이 가리키는 DB 에 시드를 넣는다(기존 테스트 데이터 삭제 가능). 프로덕션 DB 금지."
+
+# 규칙
+- 스키마에서 확인한 실제 모델·필드명만 사용 (지어내지 말 것).
+- 필수(required) 필드는 빠짐없이 채운다. enum/형식 제약을 지킨다.
+- 파일만 쓰고, result 에는 만든 파일 경로 + 모델별 건수 요약만 적는다.`
+}
+
 /** 모든 생성/수정 프롬프트 앞에 붙는 가드레일(.qa/RULES.md). 무신사식 "규칙 문서" 패턴. */
 export function rulesHeader(rules: string): string {
   const body = rules.trim()

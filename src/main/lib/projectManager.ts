@@ -19,6 +19,7 @@ import {
   decomposePrompt,
   indexHeader,
   seedAnalysisPrompt,
+  seedScriptPrompt,
   seedHeader,
   testCoveragePrompt,
   testsPrompt,
@@ -194,6 +195,32 @@ export async function analyzeSeed(
   const knownWorld = await getKnownWorld(projectPath)
   const m = (res.summary || '').match(/SETUP:\s*(.+)/i)
   return { knownWorld, suggestedCommand: m ? m[1].trim() : '' }
+}
+
+/** [AI] DB 스키마를 읽어 테스트 시드 스크립트(.qa/seed/seed.mjs)를 생성. 반환=실행 명령. */
+export async function generateSeed(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<{ scriptRel: string; command: string }> {
+  const seedDir = join(qaDir(projectPath), 'seed')
+  await fs.mkdir(seedDir, { recursive: true })
+  const outFile = join(seedDir, 'seed.mjs')
+  onProgress({ phase: 'analyze', message: 'DB 스키마 분석 → 시드 스크립트 생성 중…' })
+  const res = await runClaude({
+    projectPath,
+    prompt: seedScriptPrompt({ seedDir, outFile }),
+    allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+    phase: 'analyze',
+    onProgress
+  })
+  if (!res.ok) throw new Error(res.error || '시드 스크립트 생성 실패')
+  // AI 가 .mjs/.ts/.js 중 하나로 썼을 수 있어 탐색
+  const made = ['seed.mjs', 'seed.ts', 'seed.js']
+    .map((f) => join(seedDir, f))
+    .find((p) => existsSync(p))
+  if (!made) throw new Error('시드 스크립트가 생성되지 않았습니다.')
+  const scriptRel = join('.qa', 'seed', made.split('/').pop()!)
+  return { scriptRel, command: `node ${scriptRel}` }
 }
 
 // ----------------------------------------------------------------------------

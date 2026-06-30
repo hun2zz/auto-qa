@@ -4,6 +4,7 @@ import {
   addRequirementText,
   analyzeAssertions,
   analyzeSeed,
+  generateSeed,
   approveAllChecklists,
   approveChecklist,
   auditCoverage,
@@ -81,6 +82,9 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.saveConfig, (_e, projectPath: string, config) => saveConfig(projectPath, config))
   ipcMain.handle(IPC.analyzeSeed, (e, projectPath: string) =>
     analyzeSeed(projectPath, progressSender(e))
+  )
+  ipcMain.handle(IPC.generateSeed, (e, projectPath: string) =>
+    generateSeed(projectPath, progressSender(e))
   )
   ipcMain.handle(IPC.getKnownWorld, (_e, projectPath: string) => getKnownWorld(projectPath))
   ipcMain.handle(IPC.saveKnownWorld, (_e, projectPath: string, content: string) =>
