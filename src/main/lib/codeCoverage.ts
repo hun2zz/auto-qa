@@ -240,7 +240,9 @@ async function generateFlowTests(
   gaps: { file: string; pct: number }[],
   onProgress: (e: ProgressEvent) => void
 ): Promise<number> {
-  const before = (await listSpecs(projectPath)).filter((f) => f.startsWith('code-flow-')).length
+  // AI 가 파일명을 code-flow-* 가 아닌 code-<flow>* 로 쓸 수 있으므로, '전체 spec 수'의
+  // 증가로 생성 여부를 판단한다. (prefix 로만 세면 false 수렴이 발생)
+  const before = (await listSpecs(projectPath)).length
   const gapList = gaps
     .filter((g) => g.pct < 50)
     .slice(0, 30)
@@ -255,7 +257,7 @@ async function generateFlowTests(
     onProgress
   })
   if (!res.ok) return 0
-  const after = (await listSpecs(projectPath)).filter((f) => f.startsWith('code-flow-')).length
+  const after = (await listSpecs(projectPath)).length
   return Math.max(0, after - before)
 }
 
@@ -295,7 +297,7 @@ export const nextcov = {
 }
 export default defineConfig({
   testDir: '../tests', testMatch: /\\.spec\\.ts$/,
-  globalSetup: './global-setup.ts', globalTeardown: './global-teardown.ts',
+  globalSetup: './global-setup.mjs', globalTeardown: './global-teardown.mjs',
   reporter: [['list']], timeout: 60000, fullyParallel: true,
   use: { baseURL: process.env.QA_BASE_URL },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
@@ -305,23 +307,25 @@ export default defineConfig({
 `,
     'utf8'
   )
+  // nextcov 는 ESM 전용이라, harness 를 .mjs(ESM)로 써야 CommonJS 프로젝트에서도
+  // import.meta 에러 없이 로드된다. (__dirname 대신 import.meta.dirname 사용)
   await fs.writeFile(
-    join(dir, 'global-setup.ts'),
-    `import * as path from 'path'
+    join(dir, 'global-setup.mjs'),
+    `import { join } from 'node:path'
 import { initCoverage, loadNextcovConfig } from 'nextcov/playwright'
 export default async function () {
-  const c = await loadNextcovConfig(path.join(__dirname, 'playwright.config.ts'))
+  const c = await loadNextcovConfig(join(import.meta.dirname, 'playwright.config.ts'))
   await initCoverage(c)
 }
 `,
     'utf8'
   )
   await fs.writeFile(
-    join(dir, 'global-teardown.ts'),
-    `import * as path from 'path'
+    join(dir, 'global-teardown.mjs'),
+    `import { join } from 'node:path'
 import { finalizeCoverage, loadNextcovConfig } from 'nextcov/playwright'
 export default async function () {
-  const c = await loadNextcovConfig(path.join(__dirname, 'playwright.config.ts'))
+  const c = await loadNextcovConfig(join(import.meta.dirname, 'playwright.config.ts'))
   await finalizeCoverage(c)
 }
 `,
