@@ -15,8 +15,6 @@ export function RunPanel(): JSX.Element {
   const testFiles = useStore((s) => s.testFiles)
   // 실제 .qa/tests 의 spec 이 하나라도 있으면 실행 가능 (코드 기준 테스트는 체크리스트가 없음)
   const hasSpecs = testFiles.length > 0 || checklists.some((c) => c.specPath)
-  const scaffoldCI = useStore((s) => s.scaffoldCI)
-  const scaffolding = useStore((s) => !!s.busyKeys['scaffoldCI'])
 
   const runBtn = (
     <div className="flex items-center gap-2">
@@ -43,9 +41,6 @@ export function RunPanel(): JSX.Element {
   const failedCount = lastReport && !lastReport.fatalError ? lastReport.failed : 0
   const headerAction = (
     <div className="flex items-center gap-2">
-      <Button variant="secondary" loading={scaffolding} loadingText="생성 중…" onClick={() => scaffoldCI()}>
-        CI 파일 생성
-      </Button>
       {failedCount > 0 && !running && (
         <Button variant="secondary" onClick={() => void runFailedTests()}>
           실패만 재실행 ({failedCount})
@@ -60,7 +55,7 @@ export function RunPanel(): JSX.Element {
       <PanelHeader
         step={4}
         title="실행 & 리포트"
-        desc="dev 서버를 구동하고 Playwright 테스트를 실행. 'CI 파일 생성'으로 PR 자동 게이트도 만듭니다."
+        desc="dev 서버를 구동하고 Playwright 테스트를 결정적으로 실행합니다."
         action={lastReport ? headerAction : undefined}
       />
       <PanelBody>
