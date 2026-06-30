@@ -3,9 +3,34 @@ import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { delimiter, join, resolve as resolvePath } from 'node:path'
 import type { CodeCoverageReport, CoverageMetric, ProgressEvent } from '@shared/types'
+import { createServer } from 'node:net'
 import { runClaude } from './claudeRunner'
 import { flowTestsPrompt } from './prompts'
 import { loadProjectEnv } from './dotenv'
+
+/** OS 가 비어있는 포트를 할당받아 반환 (커버리지 서버 포트 충돌 방지) */
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer()
+    srv.on('error', reject)
+    srv.listen(0, () => {
+      const addr = srv.address()
+      const port = typeof addr === 'object' && addr ? addr.port : 0
+      srv.close(() => resolve(port))
+    })
+  })
+}
+
+/** baseURL 의 포트만 교체 */
+function replacePort(baseURL: string, port: number): string {
+  try {
+    const u = new URL(baseURL)
+    u.port = String(port)
+    return u.origin
+  } catch {
+    return `http://localhost:${port}`
+  }
+}
 
 /**
  * 코드 커버리지 (서버+클라). nextcov(V8 기반)로 Turbopack 호환.
@@ -71,19 +96,22 @@ async function prepareCoverage(
     throw new Error(`production 빌드 실패 (code ${build.code}). ${hint}\n${tail.slice(-800)}`)
   }
 
-  onProgress({ phase: 'devserver', message: '커버리지 서버 기동 중…' })
+  // 포트 충돌 방지: 빈 포트를 할당받아 커버리지 서버를 그 포트로 띄운다.
+  const freePort = await findFreePort()
+  const effectiveURL = replacePort(baseURL, freePort)
+  onProgress({ phase: 'devserver', message: `커버리지 서버 기동 중… (${effectiveURL})` })
   const covOut = join(projectPath, '.v8-coverage')
   await fs.rm(covOut, { recursive: true, force: true })
   await fs.mkdir(covOut, { recursive: true })
   restorers.push(async () => {
     await fs.rm(covOut, { recursive: true, force: true })
   })
-  const server = await startServer(projectPath, baseURL, covOut, onProgress)
+  const server = await startServer(projectPath, effectiveURL, covOut, onProgress)
 
   const tool = toolPaths(projectPath)
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    QA_BASE_URL: baseURL,
+    QA_BASE_URL: effectiveURL, // 빈 포트로 띄운 커버리지 서버 주소로 테스트
     NODE_PATH: tool.nodeModules + (process.env.NODE_PATH ? delimiter + process.env.NODE_PATH : ''),
     FORCE_COLOR: '0'
   }
@@ -356,13 +384,22 @@ async function startServer(
   // (npm start 로 감싸면 npm-cli 프로세스가 잡혀 커버리지가 0 이 됨)
   const nextBin = join(projectPath, 'node_modules', '.bin', 'next')
   const useNext = existsSync(nextBin)
-  const child = spawn(useNext ? nextBin : 'npm', useNext ? ['start'] : ['start'], {
+  const port = (() => {
+    try {
+      return new URL(baseURL).port || '3000'
+    } catch {
+      return '3000'
+    }
+  })()
+  // next 는 -p 로, npm 폴백은 PORT env 로 포트 지정 (할당받은 빈 포트 사용)
+  const child = spawn(useNext ? nextBin : 'npm', useNext ? ['start', '-p', port] : ['start'], {
     cwd: projectPath,
     shell: process.platform === 'win32',
     detached: process.platform !== 'win32',
     env: {
       ...process.env,
       ...loadProjectEnv(projectPath),
+      PORT: port,
       NODE_V8_COVERAGE: covOut,
       NODE_OPTIONS: '--inspect=9230'
     },
