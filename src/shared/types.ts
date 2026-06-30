@@ -268,6 +268,8 @@ export interface TestResult {
   error?: string
   /** 이 테스트가 속한 spec 파일 (Playwright rootDir 기준 상대경로) */
   file?: string
+  /** spec 의 줄 번호 (실패만 재실행 시 file:line 으로 정밀 타깃) */
+  line?: number
 }
 
 /** 한 번의 실행 리포트 */
@@ -344,6 +346,7 @@ export const IPC = {
   rebuildIndex: 'index:build',
   validateSelectors: 'index:validate',
   runTests: 'tests:run',
+  runFailedTests: 'tests:runFailed',
   cancelRun: 'tests:cancel',
   negativeControl: 'tests:negativeControl',
   getLastReport: 'report:last',
@@ -465,6 +468,8 @@ export interface AutoQaApi {
 
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
   runTests(projectPath: string, only?: string): Promise<RunReport>
+  /** 직전 리포트에서 실패/타임아웃한 테스트만 재실행 (file:line 정밀 타깃, 없으면 파일 단위) */
+  runFailedTests(projectPath: string): Promise<RunReport>
   /** 진행 중인 runTests 를 중단 (Playwright 종료 + dev 서버 정리) */
   cancelRun(projectPath: string): Promise<void>
   /** [무거움] 통과 테스트의 기대값을 틀리게 변형해 재실행 → 진짜 검증하는지(sensitive) 확인 */

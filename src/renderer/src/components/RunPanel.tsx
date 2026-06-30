@@ -8,6 +8,7 @@ import { PlayIcon, AlertIcon, ChevronIcon, SparkleIcon } from './icons'
 export function RunPanel(): JSX.Element {
   const lastReport = useStore((s) => s.lastReport)
   const runTests = useStore((s) => s.runTests)
+  const runFailedTests = useStore((s) => s.runFailedTests)
   const cancelRun = useStore((s) => s.cancelRun)
   const running = useStore((s) => !!s.busyKeys['runTests'])
   const checklists = useStore((s) => s.checklists)
@@ -37,11 +38,17 @@ export function RunPanel(): JSX.Element {
     </div>
   )
 
+  const failedCount = lastReport && !lastReport.fatalError ? lastReport.failed : 0
   const headerAction = (
     <div className="flex items-center gap-2">
       <Button variant="secondary" loading={scaffolding} loadingText="생성 중…" onClick={() => scaffoldCI()}>
         CI 파일 생성
       </Button>
+      {failedCount > 0 && !running && (
+        <Button variant="secondary" onClick={() => void runFailedTests()}>
+          실패만 재실행 ({failedCount})
+        </Button>
+      )}
       {runBtn}
     </div>
   )

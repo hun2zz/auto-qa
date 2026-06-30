@@ -18,8 +18,10 @@ export async function runPlaywright(args: {
   extraEnv?: Record<string, string>
   /** 특정 spec 파일만 재실행 (self-healing 용). .qa 기준 또는 파일명 */
   only?: string
+  /** 여러 타깃(파일 또는 file:line) 재실행. only 보다 우선. */
+  targets?: string[]
 }): Promise<RunReport> {
-  const { projectPath, onProgress, signal, extraEnv, only } = args
+  const { projectPath, onProgress, signal, extraEnv, only, targets } = args
   const configPath = join('.qa', 'playwright.config.ts')
   const tool = toolPaths(projectPath)
 
@@ -43,7 +45,10 @@ export async function runPlaywright(args: {
   })
 
   const testArgs = ['test', '--config', configPath, '--reporter=json']
-  if (only) testArgs.push(only)
+  // 타깃 필터: targets(여러 개) 우선, 없으면 only(단일). Playwright 는 위치 인자를
+  // 파일 경로 부분일치 + :line 필터로 받는다.
+  const filters = targets && targets.length ? targets : only ? [only] : []
+  for (const f of filters) testArgs.push(f)
 
   let res = await spawnPw(tool, testArgs, { projectPath, env, signal, onProgress })
 
@@ -183,6 +188,7 @@ function extractJson(stdout: string): Record<string, unknown> | null {
 
 interface PwSpec {
   title: string
+  line?: number
   tests?: Array<{ results?: Array<{ status?: string; duration?: number; error?: { message?: string } }> }>
 }
 interface PwSuite {
@@ -203,7 +209,8 @@ function toReport(json: Record<string, unknown>): RunReport {
         status,
         durationMs: r?.duration ?? 0,
         error: r?.error?.message,
-        file: f
+        file: f,
+        line: spec.line
       })
     }
     for (const child of suite.suites ?? []) walk(child, f)

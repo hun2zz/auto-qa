@@ -34,6 +34,40 @@ export async function runTests(
   onProgress: (e: ProgressEvent) => void,
   only?: string
 ): Promise<RunReport> {
+  return doRun(projectPath, onProgress, only ? [only] : undefined)
+}
+
+/** 직전 리포트의 실패/타임아웃 테스트만 재실행. file:line 정밀 타깃(없으면 파일 단위). */
+export async function runFailedTests(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<RunReport> {
+  const last = await getLastReport(projectPath)
+  const failed = (last?.results ?? []).filter(
+    (r) => r.status === 'failed' || r.status === 'timedOut'
+  )
+  if (failed.length === 0) {
+    onProgress({ phase: 'playwright', message: '재실행할 실패 테스트가 없습니다.', done: true })
+    return last ?? fatalReport('직전 실행 리포트가 없습니다.')
+  }
+  // file:line 으로 정밀 타깃. line 이 없는(구버전 리포트) 경우 파일 단위로 폴백.
+  const targets = [
+    ...new Set(
+      failed
+        .map((r) => (r.file ? (r.line ? `${r.file}:${r.line}` : r.file) : null))
+        .filter((x): x is string => x != null)
+    )
+  ]
+  onProgress({ phase: 'playwright', message: `실패 ${failed.length}건 재실행 (타깃 ${targets.length})` })
+  return doRun(projectPath, onProgress, targets)
+}
+
+/** runTests / runFailedTests 공통 본문. targets 지정 시 해당 타깃만 실행. */
+async function doRun(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void,
+  targets?: string[]
+): Promise<RunReport> {
   let server: DevServerHandle | null = null
   const controller = new AbortController()
   activeRuns.set(projectPath, controller)
@@ -44,7 +78,7 @@ export async function runTests(
     const stamped = await runAndStamp(projectPath, {
       extraEnv,
       onProgress,
-      only,
+      targets,
       signal: controller.signal
     })
     await persist(projectPath, stamped)
@@ -319,6 +353,7 @@ async function runAndStamp(
     extraEnv: Record<string, string>
     onProgress: (e: ProgressEvent) => void
     only?: string
+    targets?: string[]
     signal?: AbortSignal
   }
 ): Promise<RunReport> {
@@ -329,6 +364,7 @@ async function runAndStamp(
     onProgress: opts.onProgress,
     extraEnv: opts.extraEnv,
     only: opts.only,
+    targets: opts.targets,
     signal: opts.signal
   })
   // 중단된 경우 Playwright 의 저수준 abort 메시지를 사람 친화적으로 교체

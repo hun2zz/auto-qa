@@ -116,6 +116,7 @@ interface AppState {
   runEval: () => Promise<void>
 
   runTests: (only?: string) => Promise<void>
+  runFailedTests: () => Promise<void>
   cancelRun: () => Promise<void>
   loadLastReport: () => Promise<void>
   auditCoverage: (requirementName: string, kind: CoverageKind) => Promise<void>
@@ -521,6 +522,24 @@ export const useStore = create<AppState>((set, get) => {
           get().pushToast('info', `테스트 완료 — 실패 ${report.failed}건`)
         } else {
           get().pushToast('success', '모든 테스트를 통과했습니다')
+        }
+      })
+    },
+
+    runFailedTests: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('runTests', async () => {
+        const report = await window.api.runFailedTests(project.path)
+        set({ lastReport: report })
+        if (report.fatalError?.includes('중단')) {
+          get().pushToast('info', '실행을 중단했습니다')
+        } else if (report.fatalError) {
+          get().pushToast('error', '실행 중 치명적 오류가 발생했습니다')
+        } else if (report.failed > 0) {
+          get().pushToast('info', `재실행 완료 — 아직 실패 ${report.failed}건`)
+        } else {
+          get().pushToast('success', '재실행한 테스트를 모두 통과했습니다')
         }
       })
     },
