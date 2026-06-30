@@ -212,6 +212,30 @@ export interface CiScaffoldResult {
   skipped: string[]
 }
 
+// ----------------------------------------------------------------------------
+// 생성기 채점 (프롬프트/규칙 변경이 생성 품질을 올렸나 — 이력 추적)
+// ----------------------------------------------------------------------------
+
+export interface EvalScore {
+  at: string
+  total: number
+  strong: number
+  weak: number
+  vacuous: number
+  /** 강한 단언 % */
+  strengthPct: number
+  /** 지어낸(환각) 셀렉터 수 */
+  inventedSelectors: number
+}
+
+export interface EvalResult {
+  current: EvalScore
+  /** 직전 점수 (delta 계산용) */
+  prev: EvalScore | null
+  /** 최근 이력 */
+  history: EvalScore[]
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -316,6 +340,7 @@ export const IPC = {
   generateAllTests: 'tests:generateAll',
   generateCodeTests: 'tests:generateCode',
   analyzeAssertions: 'tests:assertionStrength',
+  runEval: 'tests:eval',
   rebuildIndex: 'index:build',
   validateSelectors: 'index:validate',
   runTests: 'tests:run',
@@ -430,6 +455,8 @@ export interface AutoQaApi {
   generateCodeTests(projectPath: string): Promise<number>
   /** [정적] 생성된 테스트의 단언 강도 분석 (실행 없음) */
   analyzeAssertions(projectPath: string): Promise<AssertionReport>
+  /** [정적] 생성 품질 채점 + 이력 기록 (프롬프트/규칙 변경 전후 비교) */
+  runEval(projectPath: string): Promise<EvalResult>
   /** grounding 인덱스 재빌드 (진짜 셀렉터/라우트 추출) */
   rebuildIndex(projectPath: string): Promise<CodeIndex>
   /** 생성된 테스트의 셀렉터를 인덱스로 검증 (지어낸 것 탐지) */

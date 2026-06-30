@@ -15,7 +15,8 @@ import type {
   CoverageKind,
   CodeCoverageReport,
   AssertionReport,
-  SelectorValidation
+  SelectorValidation,
+  EvalResult
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -111,6 +112,8 @@ interface AppState {
   analyzeAssertions: () => Promise<void>
   selectorValidation: SelectorValidation | null
   validateSelectors: () => Promise<void>
+  evalResult: EvalResult | null
+  runEval: () => Promise<void>
 
   runTests: (only?: string) => Promise<void>
   loadLastReport: () => Promise<void>
@@ -170,6 +173,7 @@ export const useStore = create<AppState>((set, get) => {
     knownWorld: '',
     assertionReport: null,
     selectorValidation: null,
+    evalResult: null,
 
     activeStep: 'requirements',
     configOpen: false,
@@ -482,6 +486,22 @@ export const useStore = create<AppState>((set, get) => {
         get().pushToast(
           n > 0 ? 'error' : 'success',
           n > 0 ? `지어낸 셀렉터 의심 ${n}개 발견` : '지어낸 셀렉터 없음 ✓'
+        )
+      })
+    },
+
+    runEval: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('runEval', async () => {
+        const evalResult = await window.api.runEval(project.path)
+        set({ evalResult })
+        const { current, prev } = evalResult
+        const delta = prev ? current.strengthPct - prev.strengthPct : null
+        const arrow = delta === null ? '' : delta > 0 ? ` (▲${delta})` : delta < 0 ? ` (▼${-delta})` : ' (=)'
+        get().pushToast(
+          delta !== null && delta < 0 ? 'error' : 'success',
+          `생성 점수: 강한단언 ${current.strengthPct}%${arrow} · 공허 ${current.vacuous} · 환각셀렉터 ${current.inventedSelectors}`
         )
       })
     },

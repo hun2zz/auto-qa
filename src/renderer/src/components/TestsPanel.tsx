@@ -3,6 +3,7 @@ import type {
   AssertionReport,
   AssertionStrength,
   Checklist,
+  EvalResult,
   SelectorValidation
 } from '@shared/types'
 import { useStore } from '../store'
@@ -22,6 +23,9 @@ export function TestsPanel(): JSX.Element {
   const validateSelectors = useStore((s) => s.validateSelectors)
   const validating = useStore((s) => !!s.busyKeys['validateSelectors'])
   const selectorValidation = useStore((s) => s.selectorValidation)
+  const runEval = useStore((s) => s.runEval)
+  const evaluating = useStore((s) => !!s.busyKeys['runEval'])
+  const evalResult = useStore((s) => s.evalResult)
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
 
@@ -53,6 +57,14 @@ export function TestsPanel(): JSX.Element {
             </Button>
             <Button
               variant="secondary"
+              loading={evaluating}
+              loadingText="채점 중…"
+              onClick={() => runEval()}
+            >
+              생성 채점
+            </Button>
+            <Button
+              variant="secondary"
               icon={<FlaskIcon width={14} height={14} />}
               loading={generatingCode}
               loadingText="생성 중…"
@@ -75,6 +87,11 @@ export function TestsPanel(): JSX.Element {
         }
       />
       <PanelBody>
+        {evalResult && (
+          <div className="mb-5">
+            <EvalReport result={evalResult} />
+          </div>
+        )}
         {selectorValidation && (
           <div className="mb-5">
             <SelectorValidationReport report={selectorValidation} />
@@ -202,6 +219,65 @@ function TestRow({ checklist }: { checklist: Checklist }): JSX.Element {
         </Button>
       </div>
     </div>
+  )
+}
+
+function EvalReport({ result }: { result: EvalResult }): JSX.Element {
+  const { current, prev, history } = result
+  const delta = prev ? current.strengthPct - prev.strengthPct : null
+  const deltaEl =
+    delta === null ? (
+      <span className="text-[11px] text-muted">첫 측정</span>
+    ) : delta > 0 ? (
+      <span className="text-[11px] font-semibold text-emerald-500">▲ {delta}p 개선</span>
+    ) : delta < 0 ? (
+      <span className="text-[11px] font-semibold text-rose-500">▼ {-delta}p 하락</span>
+    ) : (
+      <span className="text-[11px] text-muted">변화 없음</span>
+    )
+  // 미니 막대그래프(최근 이력의 강한단언 %)
+  const max = Math.max(100, ...history.map((h) => h.strengthPct))
+  return (
+    <article className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <h3 className="text-sm font-medium text-text">생성 채점 (이력 추적)</h3>
+          <p className="mt-0.5 text-[11px] text-muted">
+            프롬프트·규칙을 바꾼 뒤 다시 생성→채점하면 점수가 오르는지 숫자로 보입니다 (정적)
+          </p>
+        </div>
+        <div className="flex flex-col items-end">
+          <span className="text-2xl font-semibold text-text">{current.strengthPct}%</span>
+          {deltaEl}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 px-5 pb-3">
+        <Badge tone="ok">강함 {current.strong}</Badge>
+        <Badge tone="warn">약함 {current.weak}</Badge>
+        <Badge tone="bad">공허 {current.vacuous}</Badge>
+        <Badge tone={current.inventedSelectors > 0 ? 'bad' : 'muted'}>
+          환각셀렉터 {current.inventedSelectors}
+        </Badge>
+        <Badge tone="muted">전체 {current.total}</Badge>
+      </div>
+      {history.length > 1 && (
+        <div className="border-t border-border bg-surface-2/30 px-5 py-4">
+          <p className="mb-2 text-[11.5px] font-medium text-text">
+            강한 단언 % 추이 (최근 {history.length}회)
+          </p>
+          <div className="flex h-20 items-end gap-1">
+            {history.map((h, i) => (
+              <div
+                key={i}
+                className="flex-1 rounded-t bg-brand/70"
+                style={{ height: `${Math.max(4, (h.strengthPct / max) * 100)}%` }}
+                title={`${new Date(h.at).toLocaleString()} · ${h.strengthPct}% (강함 ${h.strong}/${h.total} · 공허 ${h.vacuous} · 환각 ${h.inventedSelectors})`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </article>
   )
 }
 

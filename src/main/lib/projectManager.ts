@@ -24,7 +24,7 @@ import {
   testsPrompt,
   rulesHeader
 } from './prompts'
-import { buildIndex, getIndex } from './codeIndex'
+import { buildIndex, getIndex, validateSelectors } from './codeIndex'
 import type {
   AssertionReport,
   AssertionStrength,
@@ -32,7 +32,9 @@ import type {
   CoverageItem,
   CoverageKind,
   CoverageReport,
-  CoverageStatus
+  CoverageStatus,
+  EvalResult,
+  EvalScore
 } from '@shared/types'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 import { composeRules, ensureRules } from './rules'
@@ -790,6 +792,38 @@ function scoreTest(spec: string, title: string, fixme: boolean, body: string): A
     }
   }
   return { spec, title, strength: 'weak', assertions: expects, reason: '강한 단언 미검출' }
+}
+
+// ----------------------------------------------------------------------------
+// 생성기 채점 (이력 추적) — 프롬프트/규칙 변경 전후 비교
+// ----------------------------------------------------------------------------
+
+const evalHistoryPath = (p: string): string => join(qaDir(p), 'evals', 'history.json')
+
+/** 현재 생성된 테스트의 품질을 채점하고 이력에 기록 (정적, 실행 없음) */
+export async function runEval(projectPath: string): Promise<EvalResult> {
+  const a = await analyzeAssertions(projectPath)
+  const v = await validateSelectors(projectPath)
+  const current: EvalScore = {
+    at: new Date().toISOString(),
+    total: a.total,
+    strong: a.strong,
+    weak: a.weak,
+    vacuous: a.vacuous,
+    strengthPct: a.strengthPct,
+    inventedSelectors: v.invented.length
+  }
+  let history: EvalScore[] = []
+  try {
+    history = JSON.parse(await fs.readFile(evalHistoryPath(projectPath), 'utf8'))
+  } catch {
+    history = []
+  }
+  const prev = history.length ? history[history.length - 1] : null
+  history.push(current)
+  await fs.mkdir(join(qaDir(projectPath), 'evals'), { recursive: true })
+  await fs.writeFile(evalHistoryPath(projectPath), JSON.stringify(history.slice(-50), null, 2), 'utf8')
+  return { current, prev, history: history.slice(-12) }
 }
 
 // ----------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import {
   generateTests,
   getConfig,
   resetProject,
+  runEval,
   importRequirement,
   listChecklists,
   listRequirements,
@@ -154,6 +155,7 @@ export function registerIpc(): void {
   )
   ipcMain.handle(IPC.rebuildIndex, (_e, projectPath: string) => buildIndex(projectPath))
   ipcMain.handle(IPC.validateSelectors, (_e, projectPath: string) => validateSelectors(projectPath))
+  ipcMain.handle(IPC.runEval, (_e, projectPath: string) => runEval(projectPath))
   ipcMain.handle(IPC.generateCodeTests, (e, projectPath: string) =>
     generateCodeTests(projectPath, progressSender(e))
   )
