@@ -2,6 +2,43 @@
 // 핵심 원칙: AI 는 "탐색·생성"만, 판정은 결정적(Playwright assertion)에 맡긴다.
 // 따라서 프롬프트는 항상 "코드를 실제로 읽고 근거에 기반해" 결과 '파일을 직접 쓰라'고 지시한다.
 
+/** known-world(시드된 결정적 상태)를 생성 프롬프트에 주입 → 정확한 값 단언 가능 */
+export function seedHeader(knownWorld: string): string {
+  const body = knownWorld.trim()
+  if (!body) return ''
+  return `# 시드 데이터 (known-world) — 테스트는 이 결정적 상태를 전제로 한다
+${body}
+
+위 known-world 의 정확한 값(개수·ID·이름 등)을 단언에 활용하라. 데이터가 없다고 test.fixme 로 빼지 말 것.
+────────────────────────────────────────────────────────
+
+`
+}
+
+export function seedAnalysisPrompt(args: { outPath: string }): string {
+  return `너는 테스트 데이터 엔지니어다. 프로젝트의 시드/스키마를 분석해 '결정적 known-world' 문서를 만든다. (DB 를 실행/변경하지 말 것 — 읽기·분석만)
+
+# 작업
+1. 시드/스키마를 Read/Grep 한다: prisma/seed*.ts, drizzle, migrations, scripts/seed*, package.json 의 db:seed 류 스크립트, schema.prisma 등.
+2. 시드가 만드는 '결정적 엔티티'를 파악한다: 관리자/유저 계정(이메일·역할), 핵심 레코드의 개수·이름·ID, 지점/카테고리 등 고정값.
+3. 테스트 전 상태를 만드는 setup 명령을 추정한다 (예: "npm run db:seed").
+
+# 출력 (이 파일을 Write)
+경로: ${args.outPath}
+형식 (마크다운):
+# Known World (시드 결정적 상태)
+## 계정
+- 관리자: <이메일> / 역할 <...> (비번은 시드 기본값 또는 env)
+## 핵심 데이터
+- <엔티티>: <개수>개 — <이름/ID 예시>
+## setup 명령
+- <추정 명령> (⚠️ 반드시 테스트 DB 를 대상으로)
+
+# 규칙
+- 코드에서 확인한 것만. 추측은 "(확인 필요)" 표기.
+- 파일만 쓰고, result 의 마지막 줄에 "SETUP: <추정 명령>" 한 줄을 적는다.`
+}
+
 /** 모든 생성/수정 프롬프트 앞에 붙는 가드레일(.qa/RULES.md). 무신사식 "규칙 문서" 패턴. */
 export function rulesHeader(rules: string): string {
   const body = rules.trim()

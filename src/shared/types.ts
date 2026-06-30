@@ -24,6 +24,13 @@ export interface QaConfig {
   readyTimeoutMs: number
   /** 첫 실패 N개 발생 시 즉시 중단(fail-fast). 0/미설정이면 끝까지 */
   maxFailures?: number
+  /** 시드데이터: 테스트 전 결정적 상태를 만드는 (선택, opt-in) */
+  seed?: {
+    /** 켜야만 setupCommand 가 실행됨 */
+    enabled: boolean
+    /** 테스트 전 실행할 시드/리셋 명령 (예: "npm run db:seed"). ⚠️ 테스트 DB 를 가리키게 할 것 */
+    setupCommand: string
+  }
   /** 로그인 시드 (선택). 비밀번호는 config 에 저장하지 않고 safeStorage 로 암호화 보관 */
   auth?: {
     enabled: boolean
@@ -218,6 +225,9 @@ export const IPC = {
   listRules: 'rules:list',
   saveRule: 'rules:save',
   resetProject: 'project:reset',
+  analyzeSeed: 'seed:analyze',
+  getKnownWorld: 'seed:get',
+  saveKnownWorld: 'seed:save',
   listRequirements: 'req:list',
   uploadRequirement: 'req:upload',
   addRequirementText: 'req:addText',
@@ -300,6 +310,12 @@ export interface AutoQaApi {
   reopenProject(path: string): Promise<ProjectInfo | null>
   /** 생성물 삭제 (네이티브 확인 다이얼로그). 반환=수행한 범위 또는 'cancel' */
   resetProject(projectPath: string): Promise<'generated' | 'all' | 'cancel'>
+
+  /** [AI] 프로젝트의 시드 스크립트/스키마를 분석해 'known-world'(시드된 결정적 상태) 문서 생성 + setupCommand 제안. 파괴적 실행 없음 */
+  analyzeSeed(projectPath: string): Promise<{ knownWorld: string; suggestedCommand: string }>
+  /** .qa/seed/known-world.md 내용 (없으면 빈 문자열) */
+  getKnownWorld(projectPath: string): Promise<string>
+  saveKnownWorld(projectPath: string, content: string): Promise<void>
   getConfig(projectPath: string): Promise<QaConfig>
   saveConfig(projectPath: string, config: QaConfig): Promise<void>
   /** .qa/rules/*.md — 단계별로 쪼갠 가드레일 규칙 (무신사식). 해당 phase 규칙만 AI 에 주입됨 */

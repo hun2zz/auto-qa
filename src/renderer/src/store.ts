@@ -85,6 +85,11 @@ interface AppState {
   loadRules: () => Promise<void>
   saveRule: (name: string, content: string) => Promise<void>
 
+  knownWorld: string
+  loadKnownWorld: () => Promise<void>
+  saveKnownWorld: (content: string) => Promise<void>
+  analyzeSeed: () => Promise<string>
+
   uploadRequirement: () => Promise<void>
   addRequirementText: (title: string, content: string) => Promise<boolean>
   refreshRequirements: () => Promise<void>
@@ -151,6 +156,7 @@ export const useStore = create<AppState>((set, get) => {
     rules: [],
     coverageReports: [],
     codeCoverage: null,
+    knownWorld: '',
 
     activeStep: 'requirements',
     configOpen: false,
@@ -258,7 +264,8 @@ export const useStore = create<AppState>((set, get) => {
         get().loadLastReport(),
         get().loadAuthStatus(),
         get().loadCoverageReports(),
-        get().loadCodeCoverage()
+        get().loadCodeCoverage(),
+        get().loadKnownWorld()
       ])
     },
 
@@ -284,6 +291,36 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       const rules = await window.api.listRules(project.path).catch(() => [])
       set({ rules })
+    },
+
+    loadKnownWorld: async () => {
+      const { project } = get()
+      if (!project) return
+      const knownWorld = await window.api.getKnownWorld(project.path).catch(() => '')
+      set({ knownWorld })
+    },
+
+    saveKnownWorld: async (content) => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('saveKnownWorld', async () => {
+        await window.api.saveKnownWorld(project.path, content)
+        set({ knownWorld: content })
+        get().pushToast('success', 'known-world 저장됨')
+      })
+    },
+
+    analyzeSeed: async () => {
+      const { project } = get()
+      if (!project) return ''
+      let suggested = ''
+      await withBusy('analyzeSeed', async () => {
+        const res = await window.api.analyzeSeed(project.path)
+        set({ knownWorld: res.knownWorld })
+        suggested = res.suggestedCommand
+        get().pushToast('success', '시드 분석 완료 — known-world 생성됨')
+      })
+      return suggested
     },
 
     saveRule: async (name, content) => {

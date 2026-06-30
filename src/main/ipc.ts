@@ -2,10 +2,13 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC, type ProgressEvent } from '@shared/types'
 import {
   addRequirementText,
+  analyzeSeed,
   approveAllChecklists,
   approveChecklist,
   auditCoverage,
   connectProject,
+  getKnownWorld,
+  saveKnownWorld,
   getCoverageReports,
   generateAllTests,
   generateAuthSetup,
@@ -65,6 +68,14 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.getConfig, (_e, projectPath: string) => getConfig(projectPath))
   ipcMain.handle(IPC.saveConfig, (_e, projectPath: string, config) => saveConfig(projectPath, config))
+  ipcMain.handle(IPC.analyzeSeed, (e, projectPath: string) =>
+    analyzeSeed(projectPath, progressSender(e))
+  )
+  ipcMain.handle(IPC.getKnownWorld, (_e, projectPath: string) => getKnownWorld(projectPath))
+  ipcMain.handle(IPC.saveKnownWorld, (_e, projectPath: string, content: string) =>
+    saveKnownWorld(projectPath, content)
+  )
+
   ipcMain.handle(IPC.listRules, (_e, projectPath: string) => listRules(projectPath))
   ipcMain.handle(IPC.saveRule, (_e, projectPath: string, name: string, content: string) =>
     saveRule(projectPath, name, content)

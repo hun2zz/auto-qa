@@ -22,6 +22,14 @@ export function ConfigModal(): JSX.Element | null {
   const saveRule = useStore((s) => s.saveRule)
   const savingRule = useStore((s) => !!s.busyKeys['saveRule'])
 
+  const knownWorld = useStore((s) => s.knownWorld)
+  const analyzeSeed = useStore((s) => s.analyzeSeed)
+  const saveKnownWorld = useStore((s) => s.saveKnownWorld)
+  const analyzingSeed = useStore((s) => !!s.busyKeys['analyzeSeed'])
+  const savingKW = useStore((s) => !!s.busyKeys['saveKnownWorld'])
+  const [seedEnabled, setSeedEnabled] = useState(!!config?.seed?.enabled)
+  const [kwDraft, setKwDraft] = useState('')
+
   const [form, setForm] = useState<QaConfig>(config ?? DEFAULT_QA_CONFIG)
   const [authEnabled, setAuthEnabled] = useState(!!config?.auth?.enabled)
   const [password, setPassword] = useState('')
@@ -33,9 +41,15 @@ export function ConfigModal(): JSX.Element | null {
     if (open) {
       setForm(config ?? DEFAULT_QA_CONFIG)
       setAuthEnabled(!!config?.auth?.enabled)
+      setSeedEnabled(!!config?.seed?.enabled)
       setPassword('')
     }
   }, [open, config])
+
+  // known-world 가 로드/변경되면 draft 동기화
+  useEffect(() => {
+    if (open) setKwDraft(knownWorld)
+  }, [open, knownWorld])
 
   // 규칙 목록이 로드되면 첫 파일 선택
   useEffect(() => {
@@ -70,7 +84,17 @@ export function ConfigModal(): JSX.Element | null {
     } else {
       next.auth = { loginUrl: '', user: '', ...next.auth, enabled: true }
     }
+    next.seed = { setupCommand: '', ...next.seed, enabled: seedEnabled }
     return next
+  }
+
+  function updateSeed(setupCommand: string): void {
+    setForm((f) => ({ ...f, seed: { enabled: f.seed?.enabled ?? true, setupCommand } }))
+  }
+
+  async function handleAnalyzeSeed(): Promise<void> {
+    const suggested = await analyzeSeed()
+    if (suggested) updateSeed(suggested)
   }
 
   function handleSave(): void {
@@ -241,6 +265,74 @@ export function ConfigModal(): JSX.Element | null {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* 시드 데이터 (선택) */}
+          <div className="rounded-xl border border-border bg-surface-2/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-text">시드 데이터 (선택)</p>
+                <p className="text-[11px] text-muted">
+                  결정적 상태(known-world)로 데이터 의존 테스트를 잠금해제
+                </p>
+              </div>
+              <Toggle checked={seedEnabled} onChange={setSeedEnabled} />
+            </div>
+
+            <div className="mt-4 space-y-4 border-t border-border pt-4">
+              <Field label="시드 분석 (AI)" hint="DB 실행 없이 분석만">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    icon={<SparkleIcon width={14} height={14} />}
+                    loading={analyzingSeed}
+                    loadingText="분석 중…"
+                    onClick={() => void handleAnalyzeSeed()}
+                  >
+                    시드 스크립트 분석
+                  </Button>
+                  <span className="text-[11px] text-muted">
+                    prisma/seed·스키마를 읽어 known-world 생성
+                  </span>
+                </div>
+              </Field>
+
+              {seedEnabled && (
+                <Field
+                  label="시드 setup 명령"
+                  hint="⚠️ 테스트 DB 를 가리키게 (dev DB 날아감 주의)"
+                >
+                  <Input
+                    value={form.seed?.setupCommand ?? ''}
+                    onChange={updateSeed}
+                    mono
+                  />
+                </Field>
+              )}
+
+              <Field label="known-world (시드 결정적 상태)" hint="생성 프롬프트에 주입됨">
+                <textarea
+                  value={kwDraft}
+                  onChange={(e) => setKwDraft(e.target.value)}
+                  spellCheck={false}
+                  rows={6}
+                  placeholder="시드 분석을 누르거나 직접 작성하세요 (계정·핵심 데이터 개수·ID 등)"
+                  className="w-full resize-y rounded-lg border border-border bg-bg px-3 py-2.5 font-mono text-[12px] leading-relaxed text-text outline-none focus:border-brand/60 focus:ring-2 focus:ring-brand/20"
+                />
+                <div className="mt-1.5 flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    loading={savingKW}
+                    loadingText="저장 중…"
+                    disabled={kwDraft === knownWorld}
+                    onClick={() => void saveKnownWorld(kwDraft)}
+                  >
+                    known-world 저장
+                  </Button>
+                </div>
+              </Field>
+            </div>
           </div>
 
           {/* QA 규칙 (.qa/rules/*) — 단계별로 쪼갠 가드레일 */}

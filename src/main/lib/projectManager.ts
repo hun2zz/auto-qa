@@ -17,6 +17,8 @@ import {
   checklistPrompt,
   codeTestsPrompt,
   decomposePrompt,
+  seedAnalysisPrompt,
+  seedHeader,
   testCoveragePrompt,
   testsPrompt,
   rulesHeader
@@ -135,6 +137,42 @@ export async function getConfig(projectPath: string): Promise<QaConfig> {
 
 export async function saveConfig(projectPath: string, config: QaConfig): Promise<void> {
   await fs.writeFile(configPath(projectPath), JSON.stringify(config, null, 2), 'utf8')
+}
+
+// ----------------------------------------------------------------------------
+// 시드 데이터 (known-world). 파괴적 실행은 runner 의 opt-in setupCommand 만.
+// ----------------------------------------------------------------------------
+
+const knownWorldPath = (p: string): string => join(qaDir(p), 'seed', 'known-world.md')
+
+export async function getKnownWorld(projectPath: string): Promise<string> {
+  return fs.readFile(knownWorldPath(projectPath), 'utf8').catch(() => '')
+}
+
+export async function saveKnownWorld(projectPath: string, content: string): Promise<void> {
+  await fs.mkdir(join(qaDir(projectPath), 'seed'), { recursive: true })
+  await fs.writeFile(knownWorldPath(projectPath), content, 'utf8')
+}
+
+/** [AI] 시드 스크립트 분석 → known-world 문서 작성 + setup 명령 제안 (DB 실행 없음) */
+export async function analyzeSeed(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<{ knownWorld: string; suggestedCommand: string }> {
+  const outPath = knownWorldPath(projectPath)
+  await fs.mkdir(join(qaDir(projectPath), 'seed'), { recursive: true })
+  onProgress({ phase: 'analyze', message: '시드/스키마 분석 중…' })
+  const res = await runClaude({
+    projectPath,
+    prompt: seedAnalysisPrompt({ outPath }),
+    allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+    phase: 'analyze',
+    onProgress
+  })
+  if (!res.ok) throw new Error(res.error || '시드 분석 실패')
+  const knownWorld = await getKnownWorld(projectPath)
+  const m = (res.summary || '').match(/SETUP:\s*(.+)/i)
+  return { knownWorld, suggestedCommand: m ? m[1].trim() : '' }
 }
 
 // ----------------------------------------------------------------------------
@@ -321,7 +359,9 @@ export async function generateChecklist(
 ): Promise<Checklist[]> {
   const baseId = slug(requirementName)
   const requirementPath = resolveRequirementPath(projectPath, requirementName)
-  const rules = rulesHeader(await composeRules(projectPath, 'checklist'))
+  const rules =
+    rulesHeader(await composeRules(projectPath, 'checklist')) +
+    seedHeader(await getKnownWorld(projectPath))
 
   // 1) 분해
   onProgress({ phase: 'checklist', message: '요구사항을 테스트 모듈로 분해 중…' })
@@ -501,7 +541,9 @@ export async function generateTests(
   const specRel = `tests/${checklistId}.spec.ts`
   const specOutPath = join(qaDir(projectPath), specRel)
   const checklistPath = join(checklistDir(projectPath), `${checklistId}.md`)
-  const rules = rulesHeader(await composeRules(projectPath, 'tests'))
+  const rules =
+    rulesHeader(await composeRules(projectPath, 'tests')) +
+    seedHeader(await getKnownWorld(projectPath))
 
   const res = await runClaude({
     projectPath,
@@ -527,7 +569,9 @@ export async function generateCodeTests(
   projectPath: string,
   onProgress: (e: ProgressEvent) => void
 ): Promise<number> {
-  const rules = rulesHeader(await composeRules(projectPath, 'tests'))
+  const rules =
+    rulesHeader(await composeRules(projectPath, 'tests')) +
+    seedHeader(await getKnownWorld(projectPath))
   onProgress({ phase: 'tests', message: '코드 분석 → 회귀·커버리지 테스트 생성 중…' })
   const res = await runClaude({
     projectPath,

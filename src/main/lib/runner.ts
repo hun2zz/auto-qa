@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { isAbsolute, join } from 'node:path'
 import type {
   HealChange,
@@ -26,6 +27,7 @@ export async function runTests(
   let server: DevServerHandle | null = null
   try {
     server = await bootDevServer(projectPath, onProgress)
+    await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
     const stamped = await runAndStamp(projectPath, { extraEnv, onProgress, only })
     await persist(projectPath, stamped)
@@ -53,6 +55,7 @@ export async function healAndRerun(
   const notes: string[] = []
   try {
     server = await bootDevServer(projectPath, onProgress)
+    await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
 
     // 1차 실행
@@ -164,6 +167,26 @@ function lineDiff(before: string, after: string): string {
 // ----------------------------------------------------------------------------
 // 헬퍼
 // ----------------------------------------------------------------------------
+
+/** opt-in 시드 명령 실행 (config.seed.enabled 일 때만). 파괴적이므로 사용자가 명시 활성화해야 함. */
+async function runSeedIfEnabled(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void
+): Promise<void> {
+  const config = await getConfig(projectPath)
+  const cmd = config.seed?.enabled ? config.seed.setupCommand?.trim() : ''
+  if (!cmd) return
+  onProgress({ phase: 'devserver', message: `시드 실행: ${cmd}` })
+  await new Promise<void>((resolve) => {
+    const c = spawn(cmd, { cwd: projectPath, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const onData = (d: Buffer): void =>
+      onProgress({ phase: 'devserver', message: '시드…', log: d.toString().trimEnd() })
+    c.stdout?.on('data', onData)
+    c.stderr?.on('data', onData)
+    c.on('close', () => resolve())
+    c.on('error', () => resolve())
+  })
+}
 
 async function bootDevServer(
   projectPath: string,
