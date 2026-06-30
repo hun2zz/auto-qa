@@ -1,5 +1,10 @@
 import type { JSX } from 'react'
-import type { AssertionReport, AssertionStrength, Checklist } from '@shared/types'
+import type {
+  AssertionReport,
+  AssertionStrength,
+  Checklist,
+  SelectorValidation
+} from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
@@ -14,6 +19,9 @@ export function TestsPanel(): JSX.Element {
   const analyzeAssertions = useStore((s) => s.analyzeAssertions)
   const analyzingAssert = useStore((s) => !!s.busyKeys['analyzeAssertions'])
   const assertionReport = useStore((s) => s.assertionReport)
+  const validateSelectors = useStore((s) => s.validateSelectors)
+  const validating = useStore((s) => !!s.busyKeys['validateSelectors'])
+  const selectorValidation = useStore((s) => s.selectorValidation)
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
 
@@ -27,6 +35,14 @@ export function TestsPanel(): JSX.Element {
         desc="① 요구사항 기준(정확성) · ② 코드 기준(회귀·커버리지, 요구사항에 없는 것 포함) 두 종류를 만듭니다."
         action={
           <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              loading={validating}
+              loadingText="검증 중…"
+              onClick={() => validateSelectors()}
+            >
+              셀렉터 검증
+            </Button>
             <Button
               variant="secondary"
               loading={analyzingAssert}
@@ -59,6 +75,11 @@ export function TestsPanel(): JSX.Element {
         }
       />
       <PanelBody>
+        {selectorValidation && (
+          <div className="mb-5">
+            <SelectorValidationReport report={selectorValidation} />
+          </div>
+        )}
         {assertionReport && (
           <div className="mb-5">
             <AssertionStrengthReport report={assertionReport} />
@@ -237,6 +258,35 @@ function AssertionStrengthReport({ report }: { report: AssertionReport }): JSX.E
             ))}
           </ul>
         </div>
+      )}
+    </article>
+  )
+}
+
+function SelectorValidationReport({ report }: { report: SelectorValidation }): JSX.Element {
+  const clean = report.invented.length === 0
+  return (
+    <article className={`overflow-hidden rounded-xl border ${clean ? 'border-ok/30' : 'border-bad/30'} bg-surface`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <h3 className="text-sm font-medium text-text">셀렉터 검증 (환각 탐지)</h3>
+          <p className="mt-0.5 text-[11px] text-muted">
+            테스트가 코드에 없는 testid 를 지어내 쓰지 않았나 · spec {report.specsScanned}개 검사
+          </p>
+        </div>
+        <span className={`text-sm font-semibold ${clean ? 'text-ok' : 'text-bad'}`}>
+          {clean ? '지어낸 셀렉터 없음 ✓' : `의심 ${report.invented.length}개`}
+        </span>
+      </div>
+      {!clean && (
+        <ul className="max-h-60 space-y-1.5 overflow-y-auto border-t border-bad/20 bg-bad/5 px-5 py-3">
+          {report.invented.map((iv, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="font-mono text-[11.5px] text-bad">{iv.selector}</span>
+              <span className="truncate font-mono text-[10.5px] text-muted">{iv.spec}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </article>
   )

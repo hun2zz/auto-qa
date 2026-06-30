@@ -17,12 +17,14 @@ import {
   checklistPrompt,
   codeTestsPrompt,
   decomposePrompt,
+  indexHeader,
   seedAnalysisPrompt,
   seedHeader,
   testCoveragePrompt,
   testsPrompt,
   rulesHeader
 } from './prompts'
+import { buildIndex, getIndex } from './codeIndex'
 import type {
   AssertionReport,
   AssertionStrength,
@@ -78,6 +80,8 @@ async function ensureScaffold(path: string): Promise<void> {
     await fs.writeFile(configPath(path), JSON.stringify(DEFAULT_QA_CONFIG, null, 2), 'utf8')
   }
   await ensureRules(path)
+  // grounding 인덱스 (셀렉터 환각 방지) — 연결 시 1회 빌드
+  await buildIndex(path).catch(() => {})
   // playwright.config 은 툴이 생성/관리하므로 항상 최신 템플릿으로 갱신
   await fs.writeFile(join(qaDir(path), 'playwright.config.ts'), playwrightConfigTemplate(), 'utf8')
   const gi = join(qaDir(path), '.gitignore')
@@ -155,6 +159,12 @@ const knownWorldPath = (p: string): string => join(qaDir(p), 'seed', 'known-worl
 
 export async function getKnownWorld(projectPath: string): Promise<string> {
   return fs.readFile(knownWorldPath(projectPath), 'utf8').catch(() => '')
+}
+
+/** grounding 인덱스 헤더 (없으면 빈 문자열) */
+async function indexHdr(projectPath: string): Promise<string> {
+  const idx = await getIndex(projectPath)
+  return idx ? indexHeader(idx) : ''
 }
 
 export async function saveKnownWorld(projectPath: string, content: string): Promise<void> {
@@ -369,7 +379,8 @@ export async function generateChecklist(
   const requirementPath = resolveRequirementPath(projectPath, requirementName)
   const rules =
     rulesHeader(await composeRules(projectPath, 'checklist')) +
-    seedHeader(await getKnownWorld(projectPath))
+    seedHeader(await getKnownWorld(projectPath)) +
+    (await indexHdr(projectPath))
 
   // 1) 분해
   onProgress({ phase: 'checklist', message: '요구사항을 테스트 모듈로 분해 중…' })
@@ -551,7 +562,8 @@ export async function generateTests(
   const checklistPath = join(checklistDir(projectPath), `${checklistId}.md`)
   const rules =
     rulesHeader(await composeRules(projectPath, 'tests')) +
-    seedHeader(await getKnownWorld(projectPath))
+    seedHeader(await getKnownWorld(projectPath)) +
+    (await indexHdr(projectPath))
 
   const res = await runClaude({
     projectPath,
@@ -579,7 +591,8 @@ export async function generateCodeTests(
 ): Promise<number> {
   const rules =
     rulesHeader(await composeRules(projectPath, 'tests')) +
-    seedHeader(await getKnownWorld(projectPath))
+    seedHeader(await getKnownWorld(projectPath)) +
+    (await indexHdr(projectPath))
   onProgress({ phase: 'tests', message: '코드 분석 → 회귀·커버리지 테스트 생성 중…' })
   const res = await runClaude({
     projectPath,

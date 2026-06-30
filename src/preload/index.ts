@@ -31,6 +31,8 @@ const api: AutoQaApi = {
   generateAllTests: (p) => ipcRenderer.invoke(IPC.generateAllTests, p),
   generateCodeTests: (p) => ipcRenderer.invoke(IPC.generateCodeTests, p),
   analyzeAssertions: (p) => ipcRenderer.invoke(IPC.analyzeAssertions, p),
+  rebuildIndex: (p) => ipcRenderer.invoke(IPC.rebuildIndex, p),
+  validateSelectors: (p) => ipcRenderer.invoke(IPC.validateSelectors, p),
 
   runTests: (p, only) => ipcRenderer.invoke(IPC.runTests, p, only),
   getLastReport: (p) => ipcRenderer.invoke(IPC.getLastReport, p),

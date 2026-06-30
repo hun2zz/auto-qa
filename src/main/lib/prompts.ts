@@ -2,6 +2,29 @@
 // 핵심 원칙: AI 는 "탐색·생성"만, 판정은 결정적(Playwright assertion)에 맡긴다.
 // 따라서 프롬프트는 항상 "코드를 실제로 읽고 근거에 기반해" 결과 '파일을 직접 쓰라'고 지시한다.
 
+/** grounding 인덱스(진짜 셀렉터/라우트)를 생성 프롬프트에 주입 → 셀렉터 환각 방지 */
+export function indexHeader(index: {
+  testids: string[]
+  ariaLabels: string[]
+  routes: string[]
+}): string {
+  if (!index.testids.length && !index.ariaLabels.length && !index.routes.length) return ''
+  const list = (arr: string[], n: number): string =>
+    arr.length ? arr.slice(0, n).map((x) => `\`${x}\``).join(', ') : '없음'
+  return `# 프로젝트 실제 셀렉터·라우트 (이 목록 안에서만 사용 — 없는 것 지어내기 절대 금지)
+## data-testid (${index.testids.length})
+${list(index.testids, 120)}
+## aria-label (${index.ariaLabels.length})
+${list(index.ariaLabels, 120)}
+## 라우트 (${index.routes.length})
+${list(index.routes, 120)}
+
+셀렉터는 위 실제 값을 우선 사용한다. 목록에 없으면 코드를 Read 해서 확인하고, 그래도 없으면 test.fixme 로 두되 **절대 지어내지 않는다**. (없는 testid/aria-label/route 를 쓴 테스트는 거부됨)
+────────────────────────────────────────────────────────
+
+`
+}
+
 /** known-world(시드된 결정적 상태)를 생성 프롬프트에 주입 → 정확한 값 단언 가능 */
 export function seedHeader(knownWorld: string): string {
   const body = knownWorld.trim()

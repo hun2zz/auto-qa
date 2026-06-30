@@ -165,6 +165,24 @@ export interface AssertionReport {
   tests: AssertionTest[]
 }
 
+// ----------------------------------------------------------------------------
+// grounding 인덱스 (AI 가 셀렉터를 지어내지 못하게)
+// ----------------------------------------------------------------------------
+
+export interface CodeIndex {
+  testids: string[]
+  ariaLabels: string[]
+  routes: string[]
+  builtAt: string
+}
+
+export interface SelectorValidation {
+  specsScanned: number
+  testidsInProject: number
+  /** 인덱스에 없는(지어낸 의심) 셀렉터 */
+  invented: { spec: string; selector: string }[]
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -268,6 +286,8 @@ export const IPC = {
   generateAllTests: 'tests:generateAll',
   generateCodeTests: 'tests:generateCode',
   analyzeAssertions: 'tests:assertionStrength',
+  rebuildIndex: 'index:build',
+  validateSelectors: 'index:validate',
   runTests: 'tests:run',
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
@@ -377,6 +397,10 @@ export interface AutoQaApi {
   generateCodeTests(projectPath: string): Promise<number>
   /** [정적] 생성된 테스트의 단언 강도 분석 (실행 없음) */
   analyzeAssertions(projectPath: string): Promise<AssertionReport>
+  /** grounding 인덱스 재빌드 (진짜 셀렉터/라우트 추출) */
+  rebuildIndex(projectPath: string): Promise<CodeIndex>
+  /** 생성된 테스트의 셀렉터를 인덱스로 검증 (지어낸 것 탐지) */
+  validateSelectors(projectPath: string): Promise<SelectorValidation>
 
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
   runTests(projectPath: string, only?: string): Promise<RunReport>

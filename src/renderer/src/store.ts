@@ -13,7 +13,8 @@ import type {
   CoverageReport,
   CoverageKind,
   CodeCoverageReport,
-  AssertionReport
+  AssertionReport,
+  SelectorValidation
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -106,6 +107,8 @@ interface AppState {
   generateCodeTests: () => Promise<void>
   assertionReport: AssertionReport | null
   analyzeAssertions: () => Promise<void>
+  selectorValidation: SelectorValidation | null
+  validateSelectors: () => Promise<void>
 
   runTests: (only?: string) => Promise<void>
   loadLastReport: () => Promise<void>
@@ -161,6 +164,7 @@ export const useStore = create<AppState>((set, get) => {
     codeCoverage: null,
     knownWorld: '',
     assertionReport: null,
+    selectorValidation: null,
 
     activeStep: 'requirements',
     configOpen: false,
@@ -459,6 +463,20 @@ export const useStore = create<AppState>((set, get) => {
         get().pushToast(
           assertionReport.vacuous > 0 ? 'info' : 'success',
           `단언 강도 ${assertionReport.strengthPct}% · 공허 ${assertionReport.vacuous} · 약함 ${assertionReport.weak}`
+        )
+      })
+    },
+
+    validateSelectors: async () => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('validateSelectors', async () => {
+        const selectorValidation = await window.api.validateSelectors(project.path)
+        set({ selectorValidation })
+        const n = selectorValidation.invented.length
+        get().pushToast(
+          n > 0 ? 'error' : 'success',
+          n > 0 ? `지어낸 셀렉터 의심 ${n}개 발견` : '지어낸 셀렉터 없음 ✓'
         )
       })
     },

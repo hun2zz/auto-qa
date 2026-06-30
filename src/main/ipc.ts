@@ -30,6 +30,7 @@ import { existsSync } from 'node:fs'
 import { getLastReport, healAndRerun, runTests } from './lib/runner'
 import { getAuthStatus, setAuthSecret } from './lib/auth'
 import { getCodeCoverage, runCodeCoverage, runCoverageLoop } from './lib/codeCoverage'
+import { buildIndex, validateSelectors } from './lib/codeIndex'
 
 /** 진행 이벤트를 호출한 창으로 전달 */
 function progressSender(e: Electron.IpcMainInvokeEvent): (p: ProgressEvent) => void {
@@ -148,6 +149,8 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.analyzeAssertions, (_e, projectPath: string) =>
     analyzeAssertions(projectPath)
   )
+  ipcMain.handle(IPC.rebuildIndex, (_e, projectPath: string) => buildIndex(projectPath))
+  ipcMain.handle(IPC.validateSelectors, (_e, projectPath: string) => validateSelectors(projectPath))
   ipcMain.handle(IPC.generateCodeTests, (e, projectPath: string) =>
     generateCodeTests(projectPath, progressSender(e))
   )
