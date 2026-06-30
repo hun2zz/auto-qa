@@ -23,7 +23,7 @@ export function RunPanel(): JSX.Element {
       loadingText="실행 중…"
       disabled={!hasSpecs}
       title={hasSpecs ? undefined : '먼저 테스트를 생성하세요'}
-      onClick={runTests}
+      onClick={() => void runTests()}
     >
       QA 실행
     </Button>
