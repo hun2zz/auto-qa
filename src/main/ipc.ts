@@ -21,6 +21,7 @@ import {
   getConfig,
   resetProject,
   runEval,
+  runStrengthenLoop,
   importRequirement,
   listChecklists,
   listRequirements,
@@ -162,6 +163,11 @@ export function registerIpc(): void {
   })
   ipcMain.handle(IPC.analyzeAssertions, (_e, projectPath: string) =>
     analyzeAssertions(projectPath)
+  )
+  ipcMain.handle(
+    IPC.strengthenLoop,
+    (e, projectPath: string, targetPct: number, maxIterations: number) =>
+      runStrengthenLoop(projectPath, targetPct, maxIterations, progressSender(e))
   )
   ipcMain.handle(IPC.rebuildIndex, (_e, projectPath: string) => buildIndex(projectPath))
   ipcMain.handle(IPC.validateSelectors, (_e, projectPath: string) => validateSelectors(projectPath))

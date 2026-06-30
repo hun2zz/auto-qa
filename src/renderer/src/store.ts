@@ -114,6 +114,7 @@ interface AppState {
   loadTestFiles: () => Promise<void>
   assertionReport: AssertionReport | null
   analyzeAssertions: () => Promise<void>
+  strengthenAssertions: (targetPct: number, maxIterations: number) => Promise<void>
   selectorValidation: SelectorValidation | null
   validateSelectors: () => Promise<void>
   evalResult: EvalResult | null
@@ -516,6 +517,19 @@ export const useStore = create<AppState>((set, get) => {
         get().pushToast(
           n > 0 ? 'error' : 'success',
           n > 0 ? `지어낸 셀렉터 의심 ${n}개 발견` : '지어낸 셀렉터 없음 ✓'
+        )
+      })
+    },
+
+    strengthenAssertions: async (targetPct, maxIterations) => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('strengthenLoop', async () => {
+        const report = await window.api.strengthenLoop(project.path, targetPct, maxIterations)
+        set({ assertionReport: report })
+        get().pushToast(
+          report.vacuous + report.weak === 0 ? 'success' : 'info',
+          `단언 강화 완료 — 강도 ${report.strengthPct}% (약함 ${report.weak} · 공허 ${report.vacuous})`
         )
       })
     },

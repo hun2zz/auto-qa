@@ -62,6 +62,30 @@ export function seedAnalysisPrompt(args: { outPath: string }): string {
 - 파일만 쓰고, result 의 마지막 줄에 "SETUP: <추정 명령>" 한 줄을 적는다.`
 }
 
+export function strengthenPrompt(args: { targets: string; testsDir: string }): string {
+  return `너는 Playwright 테스트 품질 엔지니어다. 아래 '약한/공허한' 테스트들을 '진짜 값/상태를 검증하는 강한 단언'으로 다시 쓴다. 단, 거짓 통과를 만들지 않는 것이 최우선이다.
+
+# 강화 대상 (각: 파일 · 테스트명 · 사유)
+${args.targets}
+
+# 작업
+1. 각 대상 테스트를 해당 spec 파일에서 찾아, 그 테스트 '안에서만' 단언을 강화한다 (다른 테스트·구조는 건드리지 말 것).
+2. 약한 단언(toBeVisible/toBeAttached 등 '존재 확인')을 가능한 곳에서 '값 단언'으로 교체·추가한다:
+   - 텍스트: toHaveText/toContainText, URL: toHaveURL, 입력값: toHaveValue, 개수: toHaveCount, 상태: toBeChecked/toBeDisabled 등.
+3. **기대값은 반드시 '근거 있는 리터럴'로 쓴다**:
+   - 위의 grounding 인덱스(실제 셀렉터/라우트)와 known-world(시드 데이터의 고정 값·개수·계정)에서 확인된 값만 사용.
+   - 코드/시드에서 값을 확정할 수 없으면 **지어내지 말 것**. 그 경우 그 단언은 그대로 두거나, 확정 가능한 다른 강한 단언을 추가한다.
+
+# 절대 금지 (가짜 강함)
+- 같은 변수끼리 비교 금지: const t = await el.textContent(); expect(el).toHaveText(t) ← 항상 통과 = 공허. 기대값은 독립적인 리터럴이어야 한다.
+- expect(true)/expect(1) 같은 리터럴 단언 추가 금지.
+- 단언을 약화하거나 삭제해서 통과시키지 말 것.
+
+# 출력
+- ${args.testsDir} 의 spec 파일들을 Edit/Write 로 '제자리 수정'.
+- result 에는 수정한 파일과 강화한 테스트 수만 요약.`
+}
+
 export function seedScriptPrompt(args: { seedDir: string; outFile: string }): string {
   return `너는 테스트 시드 데이터 엔지니어다. 이 프로젝트의 DB 스키마를 읽고, E2E 테스트가 의존하는 '최소한의 현실적인' 시드 데이터를 넣는 실행 가능한 스크립트를 만든다.
 

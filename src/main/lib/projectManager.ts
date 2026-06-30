@@ -20,6 +20,7 @@ import {
   indexHeader,
   seedAnalysisPrompt,
   seedScriptPrompt,
+  strengthenPrompt,
   seedHeader,
   testCoveragePrompt,
   testsPrompt,
@@ -839,6 +840,64 @@ export async function listTestFiles(projectPath: string): Promise<TestFile[]> {
     })
   }
   return out
+}
+
+/**
+ * [AI 루프] 약한/공허 단언을 '강한 값 단언'으로 재작성 → 재채점을 목표/한도까지 반복.
+ * 근거(인덱스+known-world)를 주입해 가짜 강함을 막고, 진전 없으면 수렴으로 중단.
+ */
+export async function runStrengthenLoop(
+  projectPath: string,
+  targetPct: number,
+  maxIterations: number,
+  onProgress: (e: ProgressEvent) => void
+): Promise<AssertionReport> {
+  let report = await analyzeAssertions(projectPath)
+  if (report.total === 0) {
+    onProgress({ phase: 'tests', message: '생성된 테스트가 없습니다.', done: true })
+    return report
+  }
+  for (let i = 0; i < maxIterations; i++) {
+    if (report.strengthPct >= targetPct) {
+      onProgress({ phase: 'tests', message: `목표 강도 ${targetPct}% 달성 (현재 ${report.strengthPct}%)`, done: true })
+      break
+    }
+    const targets = report.tests.filter((t) => t.strength === 'vacuous' || t.strength === 'weak')
+    if (targets.length === 0) {
+      onProgress({ phase: 'tests', message: '강화할 약한/공허 테스트가 없습니다.', done: true })
+      break
+    }
+    onProgress({
+      phase: 'tests',
+      message: `반복 ${i + 1}/${maxIterations} — 강도 ${report.strengthPct}% · 강화 대상 ${targets.length}`,
+      fraction: Math.min(1, report.strengthPct / targetPct)
+    })
+    const targetList = targets
+      .slice(0, 40)
+      .map((t) => `- ${t.spec} · "${t.title}" — ${t.reason ?? t.strength}`)
+      .join('\n')
+    const rules =
+      rulesHeader(await composeRules(projectPath, 'tests')) +
+      seedHeader(await getKnownWorld(projectPath)) +
+      (await indexHdr(projectPath))
+    const res = await runClaude({
+      projectPath,
+      prompt: rules + strengthenPrompt({ targets: targetList, testsDir: testsDir(projectPath) }),
+      allowedTools: ['Read', 'Grep', 'Glob', 'Edit', 'Write'],
+      phase: 'tests',
+      onProgress
+    })
+    if (!res.ok) throw new Error(res.error || '단언 강화 실패')
+    const next = await analyzeAssertions(projectPath)
+    // 진전 없으면(강한 단언 수가 늘지 않음) 수렴으로 중단 — 무한 no-op 방지
+    if (next.strong <= report.strong) {
+      report = next
+      onProgress({ phase: 'tests', message: `더 강화할 게 없습니다 (수렴, ${report.strengthPct}%)`, done: true })
+      break
+    }
+    report = next
+  }
+  return report
 }
 
 // ----------------------------------------------------------------------------

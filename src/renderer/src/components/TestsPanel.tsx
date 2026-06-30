@@ -21,6 +21,8 @@ export function TestsPanel(): JSX.Element {
   const analyzeAssertions = useStore((s) => s.analyzeAssertions)
   const analyzingAssert = useStore((s) => !!s.busyKeys['analyzeAssertions'])
   const assertionReport = useStore((s) => s.assertionReport)
+  const strengthenAssertions = useStore((s) => s.strengthenAssertions)
+  const strengthening = useStore((s) => !!s.busyKeys['strengthenLoop'])
   const validateSelectors = useStore((s) => s.validateSelectors)
   const validating = useStore((s) => !!s.busyKeys['validateSelectors'])
   const selectorValidation = useStore((s) => s.selectorValidation)
@@ -56,6 +58,16 @@ export function TestsPanel(): JSX.Element {
               onClick={() => analyzeAssertions()}
             >
               단언 강도 분석
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<SparkleIcon width={14} height={14} />}
+              loading={strengthening}
+              loadingText="강화 중…"
+              title="약한·공허 단언을 강한 값 단언으로 재작성 (목표 80% · 최대 3회)"
+              onClick={() => strengthenAssertions(80, 3)}
+            >
+              단언 강화
             </Button>
             <Button
               variant="secondary"
