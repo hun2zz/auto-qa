@@ -34,7 +34,8 @@ import type {
   CoverageReport,
   CoverageStatus,
   EvalResult,
-  EvalScore
+  EvalScore,
+  TestFile
 } from '@shared/types'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 import { composeRules, ensureRules } from './rules'
@@ -793,6 +794,24 @@ function scoreTest(spec: string, title: string, fixme: boolean, body: string): A
     }
   }
   return { spec, title, strength: 'weak', assertions: expects, reason: '강한 단언 미검출' }
+}
+
+/** .qa/tests 의 생성된 spec 파일 목록 (체크리스트 유무와 무관하게 실제 파일 기준) */
+export async function listTestFiles(projectPath: string): Promise<TestFile[]> {
+  const dir = testsDir(projectPath)
+  if (!existsSync(dir)) return []
+  const out: TestFile[] = []
+  for (const f of (await fs.readdir(dir)).filter((x) => x.endsWith('.spec.ts')).sort()) {
+    const src = await fs.readFile(join(dir, f), 'utf8').catch(() => '')
+    const tests = splitTests(src)
+    out.push({
+      name: f,
+      kind: f.startsWith('code-') ? 'code' : 'checklist',
+      tests: tests.length,
+      fixmes: tests.filter((t) => t.fixme).length
+    })
+  }
+  return out
 }
 
 // ----------------------------------------------------------------------------

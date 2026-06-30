@@ -16,7 +16,8 @@ import type {
   CodeCoverageReport,
   AssertionReport,
   SelectorValidation,
-  EvalResult
+  EvalResult,
+  TestFile
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -108,6 +109,8 @@ interface AppState {
   generateTests: (checklistId: string) => Promise<void>
   generateAllTests: () => Promise<void>
   generateCodeTests: () => Promise<void>
+  testFiles: TestFile[]
+  loadTestFiles: () => Promise<void>
   assertionReport: AssertionReport | null
   analyzeAssertions: () => Promise<void>
   selectorValidation: SelectorValidation | null
@@ -177,6 +180,7 @@ export const useStore = create<AppState>((set, get) => {
     assertionReport: null,
     selectorValidation: null,
     evalResult: null,
+    testFiles: [],
 
     activeStep: 'requirements',
     configOpen: false,
@@ -285,8 +289,16 @@ export const useStore = create<AppState>((set, get) => {
         get().loadAuthStatus(),
         get().loadCoverageReports(),
         get().loadCodeCoverage(),
-        get().loadKnownWorld()
+        get().loadKnownWorld(),
+        get().loadTestFiles()
       ])
+    },
+
+    loadTestFiles: async () => {
+      const { project } = get()
+      if (!project) return
+      const testFiles = await window.api.listTestFiles(project.path).catch(() => [])
+      set({ testFiles })
     },
 
     loadConfig: async () => {
@@ -453,6 +465,7 @@ export const useStore = create<AppState>((set, get) => {
       await withBusy('generateAllTests', async () => {
         const checklists = await window.api.generateAllTests(project.path)
         set({ checklists })
+        await get().loadTestFiles()
         get().pushToast('success', '테스트 일괄 생성 완료')
       })
     },
@@ -462,6 +475,7 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       await withBusy('generateCodeTests', async () => {
         const n = await window.api.generateCodeTests(project.path)
+        await get().loadTestFiles()
         get().pushToast('success', `코드 기준 테스트 ${n}개 파일 생성 (회귀·커버리지)`)
       })
     },

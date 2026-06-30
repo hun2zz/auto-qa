@@ -15,6 +15,7 @@ import {
   generateAuthSetup,
   generateChecklist,
   generateCodeTests,
+  listTestFiles,
   generateTests,
   getConfig,
   resetProject,
@@ -166,6 +167,7 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.generateCodeTests, (e, projectPath: string) =>
     generateCodeTests(projectPath, progressSender(e))
   )
+  ipcMain.handle(IPC.listTestFiles, (_e, projectPath: string) => listTestFiles(projectPath))
 
   ipcMain.handle(IPC.runTests, (e, projectPath: string, only?: string) =>
     runTests(projectPath, progressSender(e), only)

@@ -236,6 +236,16 @@ export interface EvalResult {
   history: EvalScore[]
 }
 
+/** .qa/tests 의 실제 생성된 spec 파일 (체크리스트와 무관하게 코드기준 테스트도 포함) */
+export interface TestFile {
+  name: string
+  /** code-*.spec.ts(코드 기준) vs 체크리스트 기반 */
+  kind: 'code' | 'checklist'
+  tests: number
+  /** test.fixme/skip 개수 (비활성) */
+  fixmes: number
+}
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -341,6 +351,7 @@ export const IPC = {
   generateTests: 'tests:generate',
   generateAllTests: 'tests:generateAll',
   generateCodeTests: 'tests:generateCode',
+  listTestFiles: 'tests:listFiles',
   analyzeAssertions: 'tests:assertionStrength',
   runEval: 'tests:eval',
   rebuildIndex: 'index:build',
@@ -457,6 +468,8 @@ export interface AutoQaApi {
   generateAllTests(projectPath: string): Promise<Checklist[]>
   /** [AI] 코드 기준 characterization(회귀+커버리지) 테스트 생성. 반환=생성 파일 수 */
   generateCodeTests(projectPath: string): Promise<number>
+  /** .qa/tests 의 실제 생성된 spec 파일 목록 (체크리스트 없이도 보임) */
+  listTestFiles(projectPath: string): Promise<TestFile[]>
   /** [정적] 생성된 테스트의 단언 강도 분석 (실행 없음) */
   analyzeAssertions(projectPath: string): Promise<AssertionReport>
   /** [정적] 생성 품질 채점 + 이력 기록 (프롬프트/규칙 변경 전후 비교) */

@@ -4,7 +4,8 @@ import type {
   AssertionStrength,
   Checklist,
   EvalResult,
-  SelectorValidation
+  SelectorValidation,
+  TestFile
 } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
@@ -26,6 +27,7 @@ export function TestsPanel(): JSX.Element {
   const runEval = useStore((s) => s.runEval)
   const evaluating = useStore((s) => !!s.busyKeys['runEval'])
   const evalResult = useStore((s) => s.evalResult)
+  const testFiles = useStore((s) => s.testFiles)
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
 
@@ -102,13 +104,18 @@ export function TestsPanel(): JSX.Element {
             <AssertionStrengthReport report={assertionReport} />
           </div>
         )}
-        {checklists.length === 0 ? (
+        {testFiles.length > 0 && (
+          <div className="mb-5">
+            <TestFilesCard files={testFiles} />
+          </div>
+        )}
+        {checklists.length === 0 && testFiles.length === 0 ? (
           <EmptyState
             icon={<FlaskIcon width={26} height={26} />}
-            title="승인된 체크리스트가 없습니다"
-            desc="2단계에서 체크리스트를 생성하고 승인하면 여기서 테스트 코드를 생성할 수 있습니다."
+            title="아직 생성된 테스트가 없습니다"
+            desc="요구사항이 없으면 위 '코드 기준 테스트 생성'으로 코드만으로 만들 수 있고, 요구사항이 있으면 2단계에서 체크리스트를 승인해 만듭니다."
           />
-        ) : (
+        ) : checklists.length > 0 ? (
           <div className="space-y-6">
             {approved.length > 0 && (
               <div className="space-y-3">
@@ -142,9 +149,51 @@ export function TestsPanel(): JSX.Element {
               </div>
             )}
           </div>
-        )}
+        ) : null}
       </PanelBody>
     </>
+  )
+}
+
+function TestFilesCard({ files }: { files: TestFile[] }): JSX.Element {
+  const totalTests = files.reduce((s, f) => s + f.tests, 0)
+  const totalFixmes = files.reduce((s, f) => s + f.fixmes, 0)
+  return (
+    <article className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <h3 className="text-sm font-medium text-text">생성된 테스트 파일 ({files.length})</h3>
+          <p className="mt-0.5 text-[11px] text-muted">
+            .qa/tests 에 실제 생성된 spec. 코드 기준 테스트는 체크리스트 없이도 여기 표시됩니다.
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Badge tone="ok">테스트 {totalTests}</Badge>
+          {totalFixmes > 0 && <Badge tone="muted">비활성 {totalFixmes}</Badge>}
+        </div>
+      </div>
+      <ul className="max-h-72 space-y-1 overflow-y-auto border-t border-border px-3 py-3">
+        {files.map((f) => (
+          <li
+            key={f.name}
+            className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2/40"
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <Badge tone={f.kind === 'code' ? 'warn' : 'muted'}>
+                {f.kind === 'code' ? '코드' : '요구사항'}
+              </Badge>
+              <span className="truncate font-mono text-[12px] text-text" title={f.name}>
+                {f.name}
+              </span>
+            </div>
+            <span className="shrink-0 text-[11px] text-muted">
+              테스트 {f.tests}
+              {f.fixmes > 0 ? ` · 비활성 ${f.fixmes}` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </article>
   )
 }
 
