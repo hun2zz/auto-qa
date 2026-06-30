@@ -75,6 +75,7 @@ async function doRun(
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
+    extraEnv.QA_BASE_URL = server.baseURL // dev 서버가 실제로 띄운 포트로 테스트
     const stamped = await runAndStamp(projectPath, {
       extraEnv,
       onProgress,
@@ -115,6 +116,7 @@ export async function healAndRerun(
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
+    extraEnv.QA_BASE_URL = server.baseURL // dev 서버가 실제로 띄운 포트로 테스트
 
     // 1차 실행
     let report = await runAndStamp(projectPath, { extraEnv, onProgress })
@@ -239,6 +241,7 @@ export async function negativeControl(
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
+    extraEnv.QA_BASE_URL = server.baseURL // dev 서버가 실제로 띄운 포트로 테스트
     await writePlaywrightConfig(projectPath)
 
     onProgress({ phase: 'playwright', message: '기준 실행(통과 테스트 식별) 중…' })

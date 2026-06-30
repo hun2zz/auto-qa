@@ -6,6 +6,19 @@ import type { ProgressEvent } from '@shared/types'
 /** 타겟 앱 dev 서버를 구동하고 readyUrl 이 응답할 때까지 대기 */
 export interface DevServerHandle {
   stop: () => void
+  /** 실제로 서버가 응답한 주소 (포트가 바뀌었으면 그 포트). 테스트 baseURL 로 사용. */
+  baseURL: string
+}
+
+/** readyUrl 의 포트만 새 포트로 교체 */
+function withPort(baseUrl: string, port: string): string {
+  try {
+    const u = new URL(baseUrl)
+    u.port = port
+    return u.origin
+  } catch {
+    return `http://localhost:${port}`
+  }
 }
 
 export async function startDevServer(args: {
@@ -21,7 +34,7 @@ export async function startDevServer(args: {
   // → 사용자가 직접 띄운 서버나 직전 실행의 서버와 포트 충돌하는 것을 방지.
   if (await isUp(readyUrl)) {
     onProgress({ phase: 'devserver', message: `이미 실행 중인 서버 재사용: ${readyUrl} ✓`, done: true })
-    return { stop: () => {} }
+    return { stop: () => {}, baseURL: readyUrl }
   }
 
   // 의존성 미설치 빠른 진단 — 없으면 'next: command not found (code 127)' 대신 명확한 안내.
@@ -42,14 +55,25 @@ export async function startDevServer(args: {
   })
 
   let tail = '' // 진단용 최근 출력 누적
+  let detectedUrl: string | null = null // dev 서버가 실제로 띄운 주소(포트 바뀜 감지)
+  const sniff = (d: string): void => {
+    // Next: "using available port 3001 instead." / "- Local: http://localhost:3001"
+    const shift = d.match(/available port (\d+)/i)
+    const local = d.match(/Local:\s*https?:\/\/[^\s:]+:(\d+)/i)
+    const generic = d.match(/https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i)
+    const port = shift?.[1] ?? local?.[1] ?? generic?.[1]
+    if (port) detectedUrl = withPort(readyUrl, port)
+  }
   child.stdout?.setEncoding('utf8')
   child.stdout?.on('data', (d: string) => {
     tail = (tail + d).slice(-2000)
+    sniff(d)
     onProgress({ phase: 'devserver', message: 'dev 서버 구동 중…', log: d.trimEnd() })
   })
   child.stderr?.setEncoding('utf8')
   child.stderr?.on('data', (d: string) => {
     tail = (tail + d).slice(-2000)
+    sniff(d)
     onProgress({ phase: 'devserver', message: 'dev 서버 구동 중…', log: d.trimEnd() })
   })
 
@@ -77,15 +101,21 @@ export async function startDevServer(args: {
         : ' devCommand 를 확인하세요.'
       throw new Error(`dev 서버가 조기 종료됨 (code ${code}).${hint}`)
     }
-    if (await isUp(readyUrl)) {
-      onProgress({ phase: 'devserver', message: '서버 준비 완료 ✓', done: true })
-      return { stop }
+    // 실제 띄운 주소(포트 바뀜)를 우선 검사, 없으면 설정된 readyUrl.
+    const target = detectedUrl ?? readyUrl
+    if (await isUp(target)) {
+      const note = target !== readyUrl ? ` (포트 변경 감지: ${target})` : ''
+      onProgress({ phase: 'devserver', message: `서버 준비 완료 ✓${note}`, done: true })
+      return { stop, baseURL: target }
     }
     await delay(700)
   }
 
   stop()
-  throw new Error(`서버 준비 대기 시간 초과 (${readyUrl}, ${readyTimeoutMs}ms). readyUrl/타임아웃을 확인하세요.`)
+  const tried = detectedUrl && detectedUrl !== readyUrl ? `${readyUrl} → 감지된 ${detectedUrl}` : readyUrl
+  throw new Error(
+    `서버 준비 대기 시간 초과 (${tried}, ${readyTimeoutMs}ms). 포트가 점유돼 다른 포트로 떴거나, readyUrl/타임아웃을 확인하세요.`
+  )
 }
 
 async function isUp(url: string): Promise<boolean> {
