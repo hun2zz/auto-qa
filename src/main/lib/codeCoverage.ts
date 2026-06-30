@@ -72,9 +72,12 @@ async function prepareCoverage(
   const ts = await patchTsconfig(projectPath)
   if (ts) restorers.push(ts)
 
+  // 직전 실패 빌드가 남긴 오염된 .next 캐시를 재사용하면 /_global-error 등으로 계속
+  // 실패할 수 있어, 커버리지 빌드 전에 .next 를 비워 항상 깨끗한 빌드를 보장한다.
+  await fs.rm(join(projectPath, '.next'), { recursive: true, force: true }).catch(() => {})
   // 프로젝트 .env 를 빌드에 주입 (prisma generate 등은 DATABASE_URL 을 요구함)
   const projectEnv = loadProjectEnv(projectPath)
-  onProgress({ phase: 'analyze', message: 'production 빌드 중… (수 분 소요)' })
+  onProgress({ phase: 'analyze', message: 'production 빌드 중… (.next 초기화 후, 수 분 소요)' })
   const build = await run(
     projectPath,
     'npm',
