@@ -309,14 +309,13 @@ async function patchSourceMaps(projectPath: string): Promise<PatchResult> {
   if (!anchor) {
     return { warning: 'next.config 구조를 인식 못 해 소스맵 자동 설정 실패(수동으로 productionBrowserSourceMaps:true 권장).' }
   }
-  const hasExperimental = /experimental\s*:/.test(original)
-  const inject = hasExperimental
-    ? '\n  productionBrowserSourceMaps: true,'
-    : '\n  productionBrowserSourceMaps: true,\n  experimental: { serverSourceMaps: true },'
+  // productionBrowserSourceMaps(클라 소스맵)만 켠다.
+  // experimental.serverSourceMaps 는 Next 16 에서 /_global-error prerender 를 깨뜨려서 제외.
+  const inject = '\n  productionBrowserSourceMaps: true,'
   const patched = original.replace(anchor[1], anchor[1] + inject)
   await fs.writeFile(file, patched, 'utf8')
   return {
-    warning: hasExperimental ? '기존 experimental 로 서버 소스맵 일부 누락 가능' : undefined,
+    warning: '서버 소스맵 미사용(클라 커버리지 위주). 서버측 remap 은 제한적일 수 있음.',
     restore: async () => {
       await fs.writeFile(file, original, 'utf8')
     }
