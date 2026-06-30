@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { ProgressEvent } from '@shared/types'
 
 /** 타겟 앱 dev 서버를 구동하고 readyUrl 이 응답할 때까지 대기 */
@@ -22,6 +24,13 @@ export async function startDevServer(args: {
     return { stop: () => {} }
   }
 
+  // 의존성 미설치 빠른 진단 — 없으면 'next: command not found (code 127)' 대신 명확한 안내.
+  if (!existsSync(join(projectPath, 'node_modules'))) {
+    throw new Error(
+      `의존성이 설치되지 않았습니다 (node_modules 없음).\n프로젝트 폴더에서 'npm install' 을 먼저 실행하세요:\n  ${projectPath}`
+    )
+  }
+
   onProgress({ phase: 'devserver', message: `dev 서버 시작: ${devCommand}` })
 
   // 셸로 실행(예: "npm run dev"). detached 로 프로세스 그룹을 만들어 트리 전체를 종료 가능하게.
@@ -32,14 +41,17 @@ export async function startDevServer(args: {
     stdio: ['ignore', 'pipe', 'pipe']
   })
 
+  let tail = '' // 진단용 최근 출력 누적
   child.stdout?.setEncoding('utf8')
-  child.stdout?.on('data', (d: string) =>
+  child.stdout?.on('data', (d: string) => {
+    tail = (tail + d).slice(-2000)
     onProgress({ phase: 'devserver', message: 'dev 서버 구동 중…', log: d.trimEnd() })
-  )
+  })
   child.stderr?.setEncoding('utf8')
-  child.stderr?.on('data', (d: string) =>
+  child.stderr?.on('data', (d: string) => {
+    tail = (tail + d).slice(-2000)
     onProgress({ phase: 'devserver', message: 'dev 서버 구동 중…', log: d.trimEnd() })
-  )
+  })
 
   const stop = (): void => {
     if (child.pid == null) return
@@ -57,7 +69,13 @@ export async function startDevServer(args: {
   const deadline = Date.now() + readyTimeoutMs
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
-      throw new Error(`dev 서버가 조기 종료됨 (code ${child.exitCode}). devCommand 를 확인하세요.`)
+      const code = child.exitCode
+      // 127 / command not found = 바이너리(next 등) 미설치 → 의존성 안내
+      const missingBin = code === 127 || /command not found|not recognized/i.test(tail)
+      const hint = missingBin
+        ? ` 실행 파일을 찾지 못했습니다 — '${projectPath}' 에서 'npm install' 을 했는지 확인하세요.`
+        : ' devCommand 를 확인하세요.'
+      throw new Error(`dev 서버가 조기 종료됨 (code ${code}).${hint}`)
     }
     if (await isUp(readyUrl)) {
       onProgress({ phase: 'devserver', message: '서버 준비 완료 ✓', done: true })
