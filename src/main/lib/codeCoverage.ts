@@ -147,6 +147,9 @@ async function measureOnce(
 
 async function cleanup(ctx: CovContext): Promise<void> {
   ctx.server?.stop()
+  // 서버가 종료하며 .v8-coverage 에 마지막 커버리지를 flush 하므로, 잠시 기다린 뒤
+  // 정리(restorers)를 돌려 .v8-coverage 가 다시 생기는(leftover) 것을 막는다.
+  await delay(800)
   for (const r of ctx.restorers.reverse()) await r().catch(() => {})
 }
 
