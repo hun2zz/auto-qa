@@ -257,14 +257,31 @@ export interface AuthStatus {
 }
 
 /** self-healing 결과 */
+/** 드리프트(고침) vs 회귀(안 고침, 플래그) 분류 */
+export type HealVerdict = 'healed' | 'real_bug' | 'skipped'
+
+/** spec 한 개에 대한 self-healing 판정·변경 내역 (리뷰용) */
+export interface HealChange {
+  file: string
+  verdict: HealVerdict
+  /** AI 한 줄 요약 */
+  summary: string
+  /** 실제로 바뀐 라인 diff (회귀면 되돌려서 없음) */
+  diff?: string
+}
+
 export interface HealResult {
   /** 수정 시도한 spec 파일 수 */
   attempted: number
-  /** AI 가 실제로 고친 spec 파일 수 */
+  /** 셀렉터 드리프트로 판정해 실제로 고친 수 */
   healed: number
+  /** 실제 회귀(버그)로 판정해 '안 고치고 플래그'한 수 — 절대 초록으로 세탁하지 않음 */
+  realBugs: number
   /** 재실행 후 리포트 */
   report: RunReport
-  /** 고친 항목 요약 */
+  /** spec별 판정·diff (리뷰용) */
+  changes: HealChange[]
+  /** 사람이 읽는 요약 (호환용) */
   notes: string[]
 }
 

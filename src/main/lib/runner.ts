@@ -1,7 +1,14 @@
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
-import type { HealResult, ProgressEvent, RunReport, TestResult } from '@shared/types'
+import type {
+  HealChange,
+  HealResult,
+  HealVerdict,
+  ProgressEvent,
+  RunReport,
+  TestResult
+} from '@shared/types'
 import { getConfig, lastReportPath, qaDir, testsDir, writePlaywrightConfig } from './projectManager'
 import { startDevServer, type DevServerHandle } from './devServer'
 import { runPlaywright } from './playwrightRunner'
@@ -54,21 +61,31 @@ export async function healAndRerun(
 
     if (failedFiles.size === 0) {
       await persist(projectPath, report)
-      return { attempted: 0, healed: 0, report, notes: ['실패한 테스트가 없습니다.'] }
+      return {
+        attempted: 0,
+        healed: 0,
+        realBugs: 0,
+        report,
+        changes: [],
+        notes: ['실패한 테스트가 없습니다.']
+      }
     }
 
-    // 2. 실패 spec 별로 AI 치유 (최대 5개 파일)
+    // 2. 실패 spec 별로 분류·치유 (최대 5개 파일). 드리프트만 고치고, 회귀는 되돌려서 절대 세탁 금지.
     const rules = rulesHeader(await composeRules(projectPath, 'healing'))
+    const changes: HealChange[] = []
     let attempted = 0
     let healed = 0
+    let realBugs = 0
     for (const [file, failures] of [...failedFiles].slice(0, 5)) {
       const specPath = resolveSpecPath(projectPath, file)
       if (!specPath) {
-        notes.push(`SKIP: spec 경로를 찾지 못함 (${file})`)
+        changes.push({ file, verdict: 'skipped', summary: 'spec 경로를 찾지 못함' })
         continue
       }
       attempted++
-      onProgress({ phase: 'tests', message: `AI 자동 수정 중: ${file}` })
+      onProgress({ phase: 'tests', message: `분류·수정 중: ${file}` })
+      const before = await fs.readFile(specPath, 'utf8').catch(() => '')
       const res = await runClaude({
         projectPath,
         prompt:
@@ -82,27 +99,66 @@ export async function healAndRerun(
         phase: 'tests',
         onProgress
       })
-      const summary = (res.summary || '').trim()
-      notes.push(`${file} → ${firstLine(summary) || (res.ok ? '처리됨' : res.error || '실패')}`)
-      if (res.ok && /^HEALED/i.test(summary)) healed++
+      const summary = firstLine((res.summary || '').trim())
+      const after = await fs.readFile(specPath, 'utf8').catch(() => before)
+      const fileChanged = after !== before
+      const isRegression = /^REAL_BUG/i.test(summary)
+
+      let verdict: HealVerdict
+      if (isRegression) {
+        // 회귀: AI 가 혹시 파일을 바꿨어도 '되돌린다'. 회귀를 절대 초록으로 세탁하지 않음.
+        if (fileChanged) await fs.writeFile(specPath, before, 'utf8')
+        verdict = 'real_bug'
+        realBugs++
+      } else if (res.ok && fileChanged && /^HEALED/i.test(summary)) {
+        verdict = 'healed'
+        healed++
+      } else {
+        // HEALED 라 했지만 변경 없음 / SKIPPED / 실패 → 적용 안 함
+        if (fileChanged && !res.ok) await fs.writeFile(specPath, before, 'utf8') // 실패 시 변경 폐기
+        verdict = 'skipped'
+      }
+      changes.push({
+        file,
+        verdict,
+        summary: summary || (res.ok ? '처리됨' : res.error || '실패'),
+        diff: verdict === 'healed' ? lineDiff(before, after) : undefined
+      })
+      notes.push(`[${verdict}] ${file} — ${summary}`)
     }
 
-    // 3. 치유가 있었으면 재실행
+    // 3. 드리프트 수정이 있었으면 재실행 (회귀 spec 은 안 고쳤으니 그대로 실패 유지)
     if (healed > 0) {
-      onProgress({ phase: 'playwright', message: '수정본 재실행 중…' })
+      onProgress({ phase: 'playwright', message: '드리프트 수정본 재실행 중…' })
       report = await runAndStamp(projectPath, { extraEnv, onProgress })
     }
     await persist(projectPath, report)
-    announce(report, onProgress)
-    return { attempted, healed, report, notes }
+    onProgress({
+      phase: 'playwright',
+      message: `치유 ${healed} · 회귀의심 ${realBugs} · 통과 ${report.passed}/실패 ${report.failed}`,
+      done: true,
+      error: realBugs > 0 || report.failed > 0
+    })
+    return { attempted, healed, realBugs, report, changes, notes }
   } catch (e) {
     const report = fatalReport((e as Error).message)
     await persist(projectPath, report).catch(() => {})
     onProgress({ phase: 'devserver', message: report.fatalError!, error: true, done: true })
-    return { attempted: 0, healed: 0, report, notes: [report.fatalError!] }
+    return { attempted: 0, healed: 0, realBugs: 0, report, changes: [], notes: [report.fatalError!] }
   } finally {
     server?.stop()
   }
+}
+
+/** 셀렉터 변경 위주의 간단한 라인 diff (바뀐 라인만, 최대 20줄) */
+function lineDiff(before: string, after: string): string {
+  const a = before.split('\n')
+  const b = after.split('\n')
+  const aSet = new Set(a)
+  const bSet = new Set(b)
+  const removed = a.filter((l) => l.trim() && !bSet.has(l)).map((l) => `- ${l.trim()}`)
+  const added = b.filter((l) => l.trim() && !aSet.has(l)).map((l) => `+ ${l.trim()}`)
+  return [...removed, ...added].slice(0, 20).join('\n')
 }
 
 // ----------------------------------------------------------------------------

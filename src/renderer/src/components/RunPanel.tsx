@@ -95,24 +95,30 @@ function SelfHealing({ report }: { report: RunReport }): JSX.Element | null {
 
 function HealNotes({ heal }: { heal: HealResult }): JSX.Element {
   const [open, setOpen] = useState(true)
-  const hasNotes = heal.notes.length > 0
+  const changes = heal.changes ?? []
+  const hasChanges = changes.length > 0
 
   return (
     <div className="mt-3 border-t border-brand/20 pt-3">
       <button
         type="button"
-        disabled={!hasNotes}
+        disabled={!hasChanges}
         onClick={() => setOpen((v) => !v)}
         className={[
           'flex w-full items-center gap-2 text-left',
-          hasNotes ? 'cursor-pointer' : 'cursor-default'
+          hasChanges ? 'cursor-pointer' : 'cursor-default'
         ].join(' ')}
       >
-        <span className="text-xs font-semibold text-text">수정 내역</span>
+        <span className="text-xs font-semibold text-text">분류·수정 내역</span>
         <span className="font-mono text-[11px] text-muted">
-          {heal.healed}/{heal.attempted} 수정
+          드리프트 {heal.healed} 수정
         </span>
-        {hasNotes && (
+        {heal.realBugs > 0 && (
+          <span className="rounded bg-bad/15 px-1.5 py-0.5 text-[10.5px] font-medium text-bad">
+            회귀 의심 {heal.realBugs} — 검토 필요
+          </span>
+        )}
+        {hasChanges && (
           <ChevronIcon
             width={14}
             height={14}
@@ -120,15 +126,40 @@ function HealNotes({ heal }: { heal: HealResult }): JSX.Element {
           />
         )}
       </button>
-      {hasNotes && open && (
-        <div className="mt-2 space-y-1">
-          {heal.notes.map((note, i) => (
-            <p
-              key={i}
-              className={`whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed ${healNoteTone(note)}`}
-            >
-              {note}
-            </p>
+      {hasChanges && open && (
+        <div className="mt-2 space-y-2">
+          {changes.map((c, i) => (
+            <div key={i} className={`rounded-lg border px-3 py-2 ${VERDICT[c.verdict].box}`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10.5px] font-semibold ${VERDICT[c.verdict].label}`}>
+                  {VERDICT[c.verdict].text}
+                </span>
+                <span className="truncate font-mono text-[11px] text-muted" title={c.file}>
+                  {c.file}
+                </span>
+              </div>
+              <p className="mt-1 break-words text-[11.5px] leading-relaxed text-text/80">
+                {c.summary}
+              </p>
+              {c.diff && (
+                <pre className="mt-1.5 max-h-40 overflow-auto rounded bg-bg/60 p-2 font-mono text-[10.5px] leading-relaxed">
+                  {c.diff.split('\n').map((line, j) => (
+                    <div
+                      key={j}
+                      className={
+                        line.startsWith('+')
+                          ? 'text-ok'
+                          : line.startsWith('-')
+                            ? 'text-bad'
+                            : 'text-muted'
+                      }
+                    >
+                      {line}
+                    </div>
+                  ))}
+                </pre>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -136,11 +167,10 @@ function HealNotes({ heal }: { heal: HealResult }): JSX.Element {
   )
 }
 
-function healNoteTone(note: string): string {
-  const trimmed = note.trimStart()
-  if (trimmed.startsWith('HEALED')) return 'text-ok'
-  if (trimmed.startsWith('REAL_BUG') || trimmed.startsWith('SKIP')) return 'text-warn'
-  return 'text-muted'
+const VERDICT: Record<string, { text: string; label: string; box: string }> = {
+  healed: { text: '드리프트·수정됨', label: 'text-ok', box: 'border-ok/30 bg-ok/5' },
+  real_bug: { text: '회귀 의심 (안 고침)', label: 'text-bad', box: 'border-bad/30 bg-bad/5' },
+  skipped: { text: '건너뜀', label: 'text-warn', box: 'border-border bg-surface' }
 }
 
 function ReportView({ report }: { report: RunReport }): JSX.Element {
