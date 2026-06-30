@@ -12,7 +12,9 @@ export function RunPanel(): JSX.Element {
   const cancelRun = useStore((s) => s.cancelRun)
   const running = useStore((s) => !!s.busyKeys['runTests'])
   const checklists = useStore((s) => s.checklists)
-  const hasSpecs = checklists.some((c) => c.specPath)
+  const testFiles = useStore((s) => s.testFiles)
+  // 실제 .qa/tests 의 spec 이 하나라도 있으면 실행 가능 (코드 기준 테스트는 체크리스트가 없음)
+  const hasSpecs = testFiles.length > 0 || checklists.some((c) => c.specPath)
   const scaffoldCI = useStore((s) => s.scaffoldCI)
   const scaffolding = useStore((s) => !!s.busyKeys['scaffoldCI'])
 
