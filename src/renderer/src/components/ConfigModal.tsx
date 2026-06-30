@@ -123,8 +123,9 @@ export function ConfigModal(): JSX.Element | null {
   const hasSecret = !!authStatus?.hasSecret
   const hasSetupSpec = !!authStatus?.hasSetupSpec
   const encryptionUnavailable = authStatus?.encryptionAvailable === false
-  const canGenerateSetup =
-    authEnabled && loginUrl.trim() !== '' && user.trim() !== '' && hasSecret
+  // 이메일/아이디는 선택 — 비밀번호 단일 인증(아이디 필드 없는 로그인)도 지원.
+  // 셋업 생성에는 로그인 URL + 저장된 비밀번호만 있으면 된다.
+  const canGenerateSetup = authEnabled && loginUrl.trim() !== '' && hasSecret
 
   return (
     <div
@@ -210,7 +211,7 @@ export function ConfigModal(): JSX.Element | null {
                 <Field label="로그인 URL">
                   <Input value={loginUrl} onChange={(v) => updateAuth('loginUrl', v)} mono />
                 </Field>
-                <Field label="아이디 / 이메일">
+                <Field label="아이디 / 이메일 (선택)" hint="비밀번호만 쓰는 로그인은 비워두세요">
                   <Input value={user} onChange={(v) => updateAuth('user', v)} />
                 </Field>
 
@@ -261,7 +262,7 @@ export function ConfigModal(): JSX.Element | null {
                       title={
                         canGenerateSetup
                           ? undefined
-                          : '로그인 URL · 아이디 · 비밀번호를 먼저 입력/저장하세요'
+                          : '로그인 URL 입력 + 비밀번호 저장이 필요합니다 (아이디는 선택)'
                       }
                       onClick={() => void generateAuthSetup(buildConfig())}
                     >
