@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ProgressEvent } from '@shared/types'
+import { loadProjectEnv } from './dotenv'
 
 /** 타겟 앱 dev 서버를 구동하고 readyUrl 이 응답할 때까지 대기 */
 export interface DevServerHandle {
@@ -51,6 +52,7 @@ export async function startDevServer(args: {
     cwd: projectPath,
     shell: true,
     detached: process.platform !== 'win32',
+    env: { ...process.env, ...loadProjectEnv(projectPath) },
     stdio: ['ignore', 'pipe', 'pipe']
   })
 

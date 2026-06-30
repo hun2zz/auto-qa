@@ -5,6 +5,7 @@ import { delimiter, join, resolve as resolvePath } from 'node:path'
 import type { CodeCoverageReport, CoverageMetric, ProgressEvent } from '@shared/types'
 import { runClaude } from './claudeRunner'
 import { flowTestsPrompt } from './prompts'
+import { loadProjectEnv } from './dotenv'
 
 /**
  * 코드 커버리지 (서버+클라). nextcov(V8 기반)로 Turbopack 호환.
@@ -46,19 +47,25 @@ async function prepareCoverage(
   const ts = await patchTsconfig(projectPath)
   if (ts) restorers.push(ts)
 
+  // 프로젝트 .env 를 빌드에 주입 (prisma generate 등은 DATABASE_URL 을 요구함)
+  const projectEnv = loadProjectEnv(projectPath)
   onProgress({ phase: 'analyze', message: 'production 빌드 중… (수 분 소요)' })
   const build = await run(
     projectPath,
     'npm',
     ['run', 'build'],
-    { NODE_OPTIONS: '--max-old-space-size=4096' },
+    { NODE_OPTIONS: '--max-old-space-size=4096', ...projectEnv },
     onProgress
   )
   if (build.code !== 0) {
     for (const r of restorers.reverse()) await r().catch(() => {})
-    throw new Error(
-      `production 빌드 실패 (code ${build.code}). 다른 dev 서버가 떠있거나 메모리 부족일 수 있습니다.\n${build.tail.slice(-800)}`
+    const missingEnv = /Missing required environment variable|PrismaConfigEnvError|environment variable[: ]+(\w+)/i.exec(
+      build.tail
     )
+    const hint = missingEnv
+      ? `빌드에 필요한 환경변수가 없습니다 (예: DATABASE_URL). 프로젝트 루트에 .env 를 만들어 필요한 값을 채워주세요.`
+      : `다른 dev 서버가 떠있거나 메모리 부족일 수 있습니다.`
+    throw new Error(`production 빌드 실패 (code ${build.code}). ${hint}\n${build.tail.slice(-800)}`)
   }
 
   onProgress({ phase: 'devserver', message: '커버리지 서버 기동 중…' })
@@ -351,7 +358,12 @@ async function startServer(
     cwd: projectPath,
     shell: process.platform === 'win32',
     detached: process.platform !== 'win32',
-    env: { ...process.env, NODE_V8_COVERAGE: covOut, NODE_OPTIONS: '--inspect=9230' },
+    env: {
+      ...process.env,
+      ...loadProjectEnv(projectPath),
+      NODE_V8_COVERAGE: covOut,
+      NODE_OPTIONS: '--inspect=9230'
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   })
   child.stdout?.on('data', (d: Buffer) =>
