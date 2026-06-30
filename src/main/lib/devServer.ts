@@ -15,6 +15,13 @@ export async function startDevServer(args: {
 }): Promise<DevServerHandle> {
   const { projectPath, devCommand, readyUrl, readyTimeoutMs, onProgress } = args
 
+  // 이미 떠 있는 dev 서버가 있으면 재사용한다. (우리가 띄운 게 아니므로 stop 은 no-op)
+  // → 사용자가 직접 띄운 서버나 직전 실행의 서버와 포트 충돌하는 것을 방지.
+  if (await isUp(readyUrl)) {
+    onProgress({ phase: 'devserver', message: `이미 실행 중인 서버 재사용: ${readyUrl} ✓`, done: true })
+    return { stop: () => {} }
+  }
+
   onProgress({ phase: 'devserver', message: `dev 서버 시작: ${devCommand}` })
 
   // 셸로 실행(예: "npm run dev"). detached 로 프로세스 그룹을 만들어 트리 전체를 종료 가능하게.

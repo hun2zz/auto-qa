@@ -81,14 +81,18 @@ async function doRun(
       targets,
       signal: controller.signal
     })
-    await persist(projectPath, stamped)
+    // 결과가 하나라도 있을 때만 직전 리포트를 덮어쓴다. (부팅/파싱 실패로 0건이면
+    // 기존의 좋은 리포트를 보존 → '실패만 재실행' 실패로 결과가 통째로 0 되는 일 방지)
+    if (!(stamped.fatalError && stamped.total === 0)) {
+      await persist(projectPath, stamped)
+    }
     announce(stamped, onProgress)
     return stamped
   } catch (e) {
     const aborted = controller.signal.aborted
     const msg = aborted ? '사용자가 실행을 중단했습니다.' : (e as Error).message
+    // 조기 실패(서버 부팅 등)는 결과 0건 → 직전 리포트를 보존하기 위해 persist 하지 않음.
     const report = fatalReport(msg)
-    await persist(projectPath, report).catch(() => {})
     onProgress({ phase: 'devserver', message: msg, error: true, done: true })
     return report
   } finally {

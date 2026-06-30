@@ -117,6 +117,7 @@ interface AppState {
 
   runTests: (only?: string) => Promise<void>
   runFailedTests: () => Promise<void>
+  applyRunResult: (report: RunReport, isRerun?: boolean) => void
   cancelRun: () => Promise<void>
   loadLastReport: () => Promise<void>
   auditCoverage: (requirementName: string, kind: CoverageKind) => Promise<void>
@@ -508,21 +509,31 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
+    applyRunResult: (report, isRerun = false) => {
+      // 부팅/조기 실패(결과 0건)면 직전 결과를 화면에 유지하고 에러만 알린다.
+      if (report.fatalError && report.total === 0) {
+        get().pushToast(
+          report.fatalError.includes('중단') ? 'info' : 'error',
+          report.fatalError.includes('중단') ? '실행을 중단했습니다' : `실행 실패: ${report.fatalError}`
+        )
+        return
+      }
+      set({ lastReport: report })
+      if (report.fatalError) {
+        get().pushToast('error', '실행 중 일부 오류가 발생했습니다')
+      } else if (report.failed > 0) {
+        get().pushToast('info', `${isRerun ? '재실행 완료 — 아직' : '테스트 완료 — '} 실패 ${report.failed}건`)
+      } else {
+        get().pushToast('success', isRerun ? '재실행한 테스트를 모두 통과했습니다' : '모든 테스트를 통과했습니다')
+      }
+    },
+
     runTests: async (only) => {
       const { project } = get()
       if (!project) return
       await withBusy('runTests', async () => {
         const report = await window.api.runTests(project.path, only)
-        set({ lastReport: report })
-        if (report.fatalError?.includes('중단')) {
-          get().pushToast('info', '실행을 중단했습니다')
-        } else if (report.fatalError) {
-          get().pushToast('error', '실행 중 치명적 오류가 발생했습니다')
-        } else if (report.failed > 0) {
-          get().pushToast('info', `테스트 완료 — 실패 ${report.failed}건`)
-        } else {
-          get().pushToast('success', '모든 테스트를 통과했습니다')
-        }
+        get().applyRunResult(report)
       })
     },
 
@@ -531,16 +542,7 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       await withBusy('runTests', async () => {
         const report = await window.api.runFailedTests(project.path)
-        set({ lastReport: report })
-        if (report.fatalError?.includes('중단')) {
-          get().pushToast('info', '실행을 중단했습니다')
-        } else if (report.fatalError) {
-          get().pushToast('error', '실행 중 치명적 오류가 발생했습니다')
-        } else if (report.failed > 0) {
-          get().pushToast('info', `재실행 완료 — 아직 실패 ${report.failed}건`)
-        } else {
-          get().pushToast('success', '재실행한 테스트를 모두 통과했습니다')
-        }
+        get().applyRunResult(report, true)
       })
     },
 
