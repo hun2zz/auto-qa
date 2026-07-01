@@ -23,6 +23,25 @@ import { healPrompt, rulesHeader } from './prompts'
 import { loadProjectEnv } from './dotenv'
 import { restoreSpecImports } from './codeCoverage'
 
+/** 동시성 제한 병렬 map. 결과는 입력 순서대로. 각 작업은 서로 독립이어야 안전. */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const out = new Array<R>(items.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++
+      if (i >= items.length) return
+      out[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return out
+}
+
 /** url 의 프로토콜/호스트(포트 포함)를 base 의 것으로 교체. 경로/쿼리는 유지. */
 function rewriteHost(url: string, base: string): string {
   try {
@@ -182,18 +201,23 @@ export async function healAndRerun(
     }
 
     // 2. 실패 spec 별로 분류·치유 (최대 5개 파일). 드리프트만 고치고, 회귀는 되돌려서 절대 세탁 금지.
+    // 파일마다 자기 spec 만 Edit 하므로 서로 독립 → 동시 4개로 병렬(순차 대비 최대 5배 단축).
     const rules = rulesHeader(await composeRules(projectPath, 'healing'))
     const changes: HealChange[] = []
     let attempted = 0
     let healed = 0
     let realBugs = 0
-    for (const [file, failures] of [...failedFiles].slice(0, 5)) {
+    interface HealOutcome {
+      change: HealChange
+      attempted: boolean
+      note?: string
+    }
+    const failedList = [...failedFiles].slice(0, 5)
+    const outcomes = await mapLimit(failedList, 4, async ([file, failures]): Promise<HealOutcome> => {
       const specPath = resolveSpecPath(projectPath, file)
       if (!specPath) {
-        changes.push({ file, verdict: 'skipped', summary: 'spec 경로를 찾지 못함' })
-        continue
+        return { change: { file, verdict: 'skipped', summary: 'spec 경로를 찾지 못함' }, attempted: false }
       }
-      attempted++
       onProgress({ phase: 'tests', message: `분류·수정 중: ${file}` })
       const before = await fs.readFile(specPath, 'utf8').catch(() => '')
       const res = await runClaude({
@@ -219,22 +243,31 @@ export async function healAndRerun(
         // 회귀: AI 가 혹시 파일을 바꿨어도 '되돌린다'. 회귀를 절대 초록으로 세탁하지 않음.
         if (fileChanged) await fs.writeFile(specPath, before, 'utf8')
         verdict = 'real_bug'
-        realBugs++
       } else if (res.ok && fileChanged && /^HEALED/i.test(summary)) {
         verdict = 'healed'
-        healed++
       } else {
         // HEALED 라 했지만 변경 없음 / SKIPPED / 실패 → 적용 안 함
         if (fileChanged && !res.ok) await fs.writeFile(specPath, before, 'utf8') // 실패 시 변경 폐기
         verdict = 'skipped'
       }
-      changes.push({
-        file,
-        verdict,
-        summary: summary || (res.ok ? '처리됨' : res.error || '실패'),
-        diff: verdict === 'healed' ? lineDiff(before, after) : undefined
-      })
-      notes.push(`[${verdict}] ${file} — ${summary}`)
+      return {
+        change: {
+          file,
+          verdict,
+          summary: summary || (res.ok ? '처리됨' : res.error || '실패'),
+          diff: verdict === 'healed' ? lineDiff(before, after) : undefined
+        },
+        attempted: true,
+        note: `[${verdict}] ${file} — ${summary}`
+      }
+    })
+    // 집계 (순서 보존)
+    for (const o of outcomes) {
+      changes.push(o.change)
+      if (o.attempted) attempted++
+      if (o.change.verdict === 'healed') healed++
+      else if (o.change.verdict === 'real_bug') realBugs++
+      if (o.note) notes.push(o.note)
     }
 
     // 3. 드리프트 수정이 있었으면 재실행 (회귀 spec 은 안 고쳤으니 그대로 실패 유지)
@@ -303,25 +336,25 @@ export async function negativeControl(
       ...new Set(baseline.results.filter((r) => r.status === 'passed').map((r) => r.file))
     ].filter((f): f is string => !!f && inScope(f))
 
-    const specs: SensitivitySpec[] = []
-    for (const file of passingFiles.slice(0, 8)) {
+    // 파일마다 변형→해당 파일만 재실행→복원. 각 파일이 독립(서로 다른 spec)이라 병렬 안전.
+    // 통과파일 최대 8개를 동시 4개로 돌려 순차 대비 크게 단축한다.
+    const targets = passingFiles.slice(0, 8)
+    const results = await mapLimit(targets, 4, async (file): Promise<SensitivitySpec | null> => {
       const specPath = resolveSpecPath(projectPath, file)
-      if (!specPath) continue
+      if (!specPath) return null
       const before = await fs.readFile(specPath, 'utf8').catch(() => '')
       const { mutated, count } = mutateExpectations(before)
-      if (count === 0) {
-        specs.push({ spec: file, verdict: 'no-assertion', mutations: 0 })
-        continue
-      }
+      if (count === 0) return { spec: file, verdict: 'no-assertion', mutations: 0 }
       onProgress({ phase: 'playwright', message: `변형 검증: ${file}` })
       await fs.writeFile(specPath, mutated, 'utf8')
       try {
         const r = await runPlaywright({ projectPath, onProgress, extraEnv, only: file })
-        specs.push({ spec: file, verdict: r.failed > 0 ? 'sensitive' : 'vacuous', mutations: count })
+        return { spec: file, verdict: r.failed > 0 ? 'sensitive' : 'vacuous', mutations: count }
       } finally {
         await fs.writeFile(specPath, before, 'utf8') // 원본 복원 (사이드이펙트 0)
       }
-    }
+    })
+    const specs: SensitivitySpec[] = results.filter((s): s is SensitivitySpec => s !== null)
 
     const sensitive = specs.filter((s) => s.verdict === 'sensitive').length
     const vacuous = specs.filter((s) => s.verdict === 'vacuous').length
