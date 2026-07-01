@@ -10,6 +10,7 @@ import type {
   AuthStatus,
   HealResult,
   FlakyReport,
+  MutationScoreReport,
   NegativeControlReport,
   RuleFile,
   CoverageReport,
@@ -59,6 +60,7 @@ interface AppState {
   lastHeal: HealResult | null
   negativeControl: NegativeControlReport | null
   flaky: FlakyReport | null
+  mutationReport: MutationScoreReport | null
   rules: RuleFile[]
   coverageReports: CoverageReport[]
   codeCoverage: CodeCoverageReport | null
@@ -145,6 +147,7 @@ interface AppState {
   healAndRerun: (only?: string[]) => Promise<void>
   runNegativeControl: (scope?: TestScope) => Promise<void>
   runFlakyDetection: (repeat: number, scope?: TestScope) => Promise<void>
+  runMutationScore: (maxMutants: number, scope?: TestScope) => Promise<void>
 }
 
 let logSeq = 0
@@ -184,6 +187,7 @@ export const useStore = create<AppState>((set, get) => {
     lastHeal: null,
     negativeControl: null,
     flaky: null,
+    mutationReport: null,
     rules: [],
     coverageReports: [],
     codeCoverage: null,
@@ -785,6 +789,23 @@ export const useStore = create<AppState>((set, get) => {
           get().pushToast(
             flaky.flaky.length > 0 ? 'error' : 'success',
             `불안정 ${flaky.flaky.length} · 안정 ${flaky.stable} · 매번 실패 ${flaky.failing}`
+          )
+        }
+      })
+    },
+
+    runMutationScore: async (maxMutants, scope = 'all') => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('mutationScore', async () => {
+        const mutationReport = await window.api.mutationScore(project.path, maxMutants, scope)
+        set({ mutationReport })
+        if (mutationReport.fatalError) {
+          get().pushToast('error', `Mutation score 실패: ${mutationReport.fatalError}`)
+        } else {
+          get().pushToast(
+            mutationReport.survived > 0 ? 'error' : 'success',
+            `mutation score ${mutationReport.score}% (구멍 ${mutationReport.survived})`
           )
         }
       })

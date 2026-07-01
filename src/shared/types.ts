@@ -240,6 +240,41 @@ export interface FlakyReport {
 }
 
 // ----------------------------------------------------------------------------
+// Mutation score: 소스에 결함(mutant)을 심고 스위트가 잡는 비율 = 스위트의 '진짜 강도'.
+// 코드 커버리지(밟았나)보다 결함검출력을 잘 예측한다. 살아남은 mutant = 검증 구멍.
+// ----------------------------------------------------------------------------
+
+/** 스위트가 못 잡은(살아남은) mutant = 그 코드 변경을 아무 테스트도 감지 못 함 */
+export interface SurvivedMutant {
+  /** 프로젝트 기준 상대경로 */
+  file: string
+  line: number
+  /** 변형 연산자 (예: "< → <=") */
+  operator: string
+  /** 변형된 줄 */
+  snippet: string
+}
+
+export interface MutationScoreReport {
+  /** 변형 대상 파일 수 */
+  targetFiles: number
+  /** 생성된 총 mutant 수(캡 적용 전) */
+  totalMutants: number
+  /** 실제 실행한 mutant 수(캡/샘플 후) */
+  tested: number
+  /** 스위트가 잡은 mutant */
+  killed: number
+  /** 스위트가 못 잡은 mutant */
+  survived: number
+  /** mutation score = killed / tested × 100 */
+  score: number
+  /** 살아남은 mutant 목록(검증 구멍) */
+  survivors: SurvivedMutant[]
+  fatalError?: string
+  warning?: string
+}
+
+// ----------------------------------------------------------------------------
 // 생성기 채점 (프롬프트/규칙 변경이 생성 품질을 올렸나 — 이력 추적)
 // ----------------------------------------------------------------------------
 
@@ -445,6 +480,7 @@ export const IPC = {
   cancelRun: 'tests:cancel',
   negativeControl: 'tests:negativeControl',
   detectFlaky: 'tests:detectFlaky',
+  mutationScore: 'tests:mutationScore',
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
   getCoverageReports: 'coverage:list',
@@ -582,6 +618,8 @@ export interface AutoQaApi {
   negativeControl(projectPath: string, scope?: TestScope): Promise<NegativeControlReport>
   /** [Flaky 감지] 선택 대상을 N회 반복 실행 → 결과가 섞인 불안정 테스트 색출 */
   detectFlaky(projectPath: string, repeat: number, scope?: TestScope): Promise<FlakyReport>
+  /** [Mutation score] 소스에 결함을 심고 스위트가 잡는 비율 측정 (스위트 강도) */
+  mutationScore(projectPath: string, maxMutants: number, scope?: TestScope): Promise<MutationScoreReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
 
   /** [AI] 요구사항 항목별 구현/테스트검증 여부 감사 → 완료율 + gap 리포트 (브라우저 불필요) */

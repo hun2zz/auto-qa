@@ -94,7 +94,7 @@ async function ensureScaffold(path: string): Promise<void> {
   if (!existsSync(gi)) {
     await fs.writeFile(
       gi,
-      ['reports/', 'test-results/', '.auth/', '.work/', '.bak/', ''].join('\n'),
+      ['reports/', 'test-results/', '.auth/', '.work/', '.bak/', '.mutation-bak/', ''].join('\n'),
       'utf8'
     )
   }

@@ -225,6 +225,72 @@ function FlakyBlock({ scope }: { scope: TestScope }): JSX.Element {
   )
 }
 
+function MutationScoreBlock(): JSX.Element {
+  const run = useStore((s) => s.runMutationScore)
+  const busy = useStore((s) => !!s.busyKeys['mutationScore'])
+  const report = useStore((s) => s.mutationReport)
+  const [maxMutants, setMaxMutants] = useState(15)
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-text">Mutation score (스위트 강도)</h3>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+            소스 로직(src/lib·api)에 작은 결함(mutant)을 심고 스위트가 잡는 비율을 잰다. 커버리지(밟았나)보다
+            결함검출력을 잘 예측. <b className="text-text/80">살아남은 mutant = 아무 테스트도 안 잡는 검증 구멍.</b>
+            (무거움 · 소스는 자동 원복)
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <select
+            value={maxMutants}
+            onChange={(e) => setMaxMutants(Number(e.target.value))}
+            disabled={busy}
+            className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] text-text"
+          >
+            <option value={8}>mutant 8</option>
+            <option value={15}>mutant 15</option>
+            <option value={30}>mutant 30</option>
+          </select>
+          <Button variant="secondary" loading={busy} loadingText="측정 중… (무거움)" onClick={() => void run(maxMutants)}>
+            측정
+          </Button>
+        </div>
+      </div>
+      {report && !report.fatalError && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone={report.score >= 80 ? 'ok' : report.score >= 50 ? 'warn' : 'bad'}>
+              score {report.score}%
+            </Badge>
+            <Badge tone="ok">잡음 {report.killed}</Badge>
+            <Badge tone={report.survived > 0 ? 'bad' : 'muted'}>구멍 {report.survived}</Badge>
+            <Badge tone="muted">
+              mutant {report.tested}/{report.totalMutants} · 파일 {report.targetFiles}
+            </Badge>
+          </div>
+          {report.warning && <p className="mt-2 text-[11px] text-warn">{report.warning}</p>}
+          {report.survivors.length > 0 ? (
+            <ul className="mt-2 space-y-1">
+              {report.survivors.slice(0, 20).map((s, i) => (
+                <li key={i} className="font-mono text-[11px] text-bad">
+                  ⚠ {s.file}:{s.line} <span className="text-muted">[{s.operator}]</span> {s.snippet.slice(0, 60)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[11.5px] text-ok">모든 mutant 를 잡았습니다 — 이 로직에 검증 구멍 없음.</p>
+          )}
+        </div>
+      )}
+      {report?.fatalError && (
+        <p className="mt-2 whitespace-pre-wrap text-[11.5px] text-bad">{report.fatalError}</p>
+      )}
+    </div>
+  )
+}
+
 function SelfHealing({ report, track }: { report: RunReport; track: TestScope }): JSX.Element | null {
   const healAndRerun = useStore((s) => s.healAndRerun)
   const healing = useStore((s) => !!s.busyKeys['healAndRerun'])
@@ -462,6 +528,7 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
       {/* negative-control: 기대값 변형 검증 */}
       <NegativeControlBlock scope={track} />
       <FlakyBlock scope={track} />
+      <MutationScoreBlock />
 
       {/* 결과 목록 (선택 트랙) + 체크박스 다중 선택 실행 */}
       {shown.length > 0 && (

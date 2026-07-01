@@ -37,6 +37,7 @@ import {
   healAndRerun,
   negativeControl,
   detectFlaky,
+  runMutationScore,
   runFailedTests,
   runTests
 } from './lib/runner'
@@ -193,6 +194,9 @@ export function registerIpc(): void {
   )
   ipcMain.handle(IPC.detectFlaky, (e, projectPath: string, repeat: number, scope?: TestScope) =>
     detectFlaky(projectPath, progressSender(e), repeat, scope)
+  )
+  ipcMain.handle(IPC.mutationScore, (e, projectPath: string, maxMutants: number, scope?: TestScope) =>
+    runMutationScore(projectPath, progressSender(e), { maxMutants, scope })
   )
 
   ipcMain.handle(

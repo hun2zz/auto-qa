@@ -7,10 +7,12 @@ import type {
   HealChange,
   HealResult,
   HealVerdict,
+  MutationScoreReport,
   NegativeControlReport,
   ProgressEvent,
   RunReport,
   SensitivitySpec,
+  SurvivedMutant,
   TestResult,
   TestScope
 } from '@shared/types'
@@ -23,6 +25,7 @@ import { composeRules } from './rules'
 import { healPrompt, rulesHeader } from './prompts'
 import { loadProjectEnv } from './dotenv'
 import { restoreSpecImports } from './codeCoverage'
+import { backupSources, generateMutants, restoreMutationSources, type Mutant } from './mutation'
 
 /** 동시성 제한 병렬 map. 결과는 입력 순서대로. 각 작업은 서로 독립이어야 안전. */
 async function mapLimit<T, R>(
@@ -145,6 +148,10 @@ async function doRun(
     const unmutated = await restoreMutationBackups(projectPath)
     if (unmutated > 0)
       onProgress({ phase: 'playwright', message: `변환검증 잔여 변형 ${unmutated}개 복원됨` })
+    // 방어: mutation score 가 죽어 변형된 채 남은 '소스 파일'을 원본으로 복원(가장 중요 — 유저 코드).
+    const unmutatedSrc = await restoreMutationSources(projectPath)
+    if (unmutatedSrc > 0)
+      onProgress({ phase: 'playwright', message: `mutation 잔여 소스 ${unmutatedSrc}개 복원됨` })
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
@@ -504,6 +511,131 @@ function mutateExpectations(src: string): { mutated: string; count: number } {
     return `.toHaveCount(${parseInt(n, 10) + 99999})`
   })
   return { mutated: out, count }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/** src 아래에서 변형 대상 로직 파일(.ts, JSX 아님, 테스트/타입 제외)을 모은다. */
+async function findLogicFiles(projectPath: string): Promise<string[]> {
+  const roots = ['src/lib', 'src/app/api', 'src/utils', 'src/server']
+  const out: string[] = []
+  const walk = async (rel: string): Promise<void> => {
+    const abs = join(projectPath, rel)
+    if (!existsSync(abs)) return
+    for (const e of await fs.readdir(abs, { withFileTypes: true })) {
+      const childRel = `${rel}/${e.name}`
+      if (e.isDirectory()) await walk(childRel)
+      else if (
+        e.name.endsWith('.ts') &&
+        !e.name.endsWith('.d.ts') &&
+        !/\.(test|spec)\.ts$/.test(e.name)
+      )
+        out.push(childRel)
+    }
+  }
+  for (const r of roots) await walk(r)
+  return out
+}
+
+/**
+ * [Mutation score] 소스에 결함(mutant)을 심고 스위트가 잡는 비율을 잰다.
+ * 커버리지(밟았나)보다 결함검출력을 잘 예측하는 '스위트 강도' 지표. 살아남은 mutant = 검증 구멍.
+ * ⚠️ 유저의 실제 소스를 임시 변형하므로 매니페스트 백업 + finally/시작 방어 복원으로 원상복구를 보장.
+ * mutant 는 서로 같은 파일을 건드릴 수 있어 반드시 '순차' 실행. Next dev HMR 로 재빌드 없이 반영.
+ */
+export async function runMutationScore(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void,
+  opts: { maxMutants?: number; scope?: TestScope; targetFiles?: string[]; testFilter?: string[] } = {}
+): Promise<MutationScoreReport> {
+  const maxMutants = opts.maxMutants ?? 15
+  const controller = new AbortController()
+  activeRuns.set(projectPath, controller)
+  let server: DevServerHandle | null = null
+  const fail = (msg: string): MutationScoreReport => ({
+    targetFiles: 0, totalMutants: 0, tested: 0, killed: 0, survived: 0, score: 0,
+    survivors: [], fatalError: msg
+  })
+  try {
+    await restoreSpecImports(projectPath)
+    await restoreMutationBackups(projectPath)
+    await restoreMutationSources(projectPath) // 이전 mutation 잔여 방어 복원
+
+    const targets = opts.targetFiles ?? (await findLogicFiles(projectPath))
+    if (targets.length === 0) return fail('변형할 로직 파일이 없습니다 (src/lib · src/app/api 등).')
+
+    // 원본 저장 + 전체 mutant 생성
+    const originals = new Map<string, string>()
+    let allMutants: Mutant[] = []
+    for (const rel of targets) {
+      const src = await fs.readFile(join(projectPath, rel), 'utf8')
+      originals.set(rel, src)
+      allMutants.push(...generateMutants(rel, src))
+    }
+    if (allMutants.length === 0) return fail('생성된 mutant 가 없습니다 (변형 가능한 연산자 없음).')
+    const totalMutants = allMutants.length
+    // 캡: 균등 샘플(stride)로 파일 편중 방지
+    if (allMutants.length > maxMutants) {
+      const stride = allMutants.length / maxMutants
+      allMutants = Array.from({ length: maxMutants }, (_, i) => allMutants[Math.floor(i * stride)])
+    }
+    await backupSources(projectPath, targets)
+
+    server = await bootDevServer(projectPath, onProgress)
+    await runSeedIfEnabled(projectPath, onProgress)
+    const extraEnv = await qaEnv(projectPath)
+    extraEnv.QA_BASE_URL = server.baseURL
+    if (extraEnv.QA_LOGIN_URL) extraEnv.QA_LOGIN_URL = rewriteHost(extraEnv.QA_LOGIN_URL, server.baseURL)
+    await writePlaywrightConfig(projectPath)
+
+    const testTargets = opts.testFilter
+    onProgress({ phase: 'playwright', message: '기준 실행(baseline) 중…' })
+    const baseline = await runPlaywright({ projectPath, onProgress, extraEnv, targets: testTargets })
+    if (baseline.fatalError) return fail(`baseline 실패: ${baseline.fatalError}`)
+    const baseFailed = baseline.failed
+    const warning =
+      baseFailed > 0 ? 'baseline 에 실패가 있습니다 — mutation score 가 부정확할 수 있음.' : undefined
+
+    let killed = 0
+    const survivors: SurvivedMutant[] = []
+    let tested = 0
+    for (const m of allMutants) {
+      if (controller.signal.aborted) break
+      tested++
+      onProgress({
+        phase: 'playwright',
+        message: `mutant ${tested}/${allMutants.length}: ${m.file}:${m.line} [${m.operator}]`
+      })
+      await fs.writeFile(join(projectPath, m.file), m.mutatedSource, 'utf8')
+      await sleep(1200) // Next dev 재컴파일 여유
+      let detected = false
+      try {
+        const r = await runPlaywright({ projectPath, onProgress, extraEnv, targets: testTargets })
+        detected = !r.fatalError && r.failed > baseFailed // 실패가 늘면 = 잡힘(killed)
+      } finally {
+        await fs.writeFile(join(projectPath, m.file), originals.get(m.file)!, 'utf8') // 원본 복원
+        await sleep(600)
+      }
+      if (detected) killed++
+      else survivors.push({ file: m.file, line: m.line, operator: m.operator, snippet: m.snippet })
+    }
+
+    const score = tested > 0 ? Math.round((killed / tested) * 1000) / 10 : 0
+    onProgress({
+      phase: 'playwright',
+      message: `mutation score ${score}% (잡음 ${killed}/${tested}, 구멍 ${survivors.length})`,
+      done: true,
+      error: survivors.length > 0
+    })
+    return { targetFiles: targets.length, totalMutants, tested, killed, survived: survivors.length, score, survivors, warning }
+  } catch (e) {
+    const aborted = controller.signal.aborted
+    return fail(aborted ? '사용자가 중단했습니다.' : (e as Error).message)
+  } finally {
+    activeRuns.delete(projectPath)
+    server?.stop()
+    await restoreMutationSources(projectPath) // 최종: 모든 소스 원상복구 + 매니페스트 삭제
+  }
 }
 
 /** opt-in 시드 명령 실행 (config.seed.enabled 일 때만). 파괴적이므로 사용자가 명시 활성화해야 함. */
