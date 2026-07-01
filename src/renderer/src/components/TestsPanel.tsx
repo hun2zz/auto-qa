@@ -9,7 +9,7 @@ import type {
 } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
-import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
+import { PanelHeader, PanelBody, EmptyState, Badge, Menu } from './common'
 import { FlaskIcon, SparkleIcon, CheckIcon, PlayIcon } from './icons'
 
 export function TestsPanel(): JSX.Element {
@@ -52,42 +52,43 @@ export function TestsPanel(): JSX.Element {
         title="테스트 생성"
         desc="개발범위 완료 테스트(요구사항·흐름)와 코드 정밀 테스트(회귀·커버리지)를 분리해 만들고 봅니다."
         action={
-          <div className="flex items-center gap-2">
+          tab === 'scope' ? (
+            <div className="flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <Button
+                  variant="secondary"
+                  icon={<SparkleIcon width={14} height={14} />}
+                  onClick={() => {
+                    void generateTestsForIds([...selectedIds])
+                    setSelectedIds(new Set())
+                  }}
+                >
+                  선택 생성 ({selectedIds.size})
+                </Button>
+              )}
+              {hasPending && (
+                <Button
+                  variant="primary"
+                  icon={<SparkleIcon />}
+                  loading={generatingAll}
+                  loadingText="생성 중…"
+                  onClick={() => generateAllTests()}
+                >
+                  전체 테스트 생성
+                </Button>
+              )}
+            </div>
+          ) : (
             <Button
-              variant="secondary"
-              loading={validating}
-              loadingText="검증 중…"
-              onClick={() => validateSelectors()}
+              variant="primary"
+              icon={<FlaskIcon width={14} height={14} />}
+              loading={generatingCode}
+              loadingText="생성 중…"
+              onClick={() => generateCodeTests()}
             >
-              셀렉터 검증
+              코드 기준 테스트 생성
             </Button>
-            <Button
-              variant="secondary"
-              loading={analyzingAssert}
-              loadingText="분석 중…"
-              onClick={() => analyzeAssertions()}
-            >
-              단언 강도 분석
-            </Button>
-            <Button
-              variant="secondary"
-              icon={<SparkleIcon width={14} height={14} />}
-              loading={strengthening}
-              loadingText="강화 중…"
-              title="약한·공허 단언을 강한 값 단언으로 재작성 (목표 80% · 최대 3회)"
-              onClick={() => strengthenAssertions(80, 3)}
-            >
-              단언 강화
-            </Button>
-            <Button
-              variant="secondary"
-              loading={evaluating}
-              loadingText="채점 중…"
-              onClick={() => runEval()}
-            >
-              생성 채점
-            </Button>
-          </div>
+          )
         }
       />
       <PanelBody>
@@ -108,56 +109,45 @@ export function TestsPanel(): JSX.Element {
           </div>
         )}
 
-        {/* 트랙 탭 */}
-        <div className="mb-5 flex gap-1 rounded-xl border border-border bg-surface-2/40 p-1">
-          <TabButton
-            active={tab === 'scope'}
-            onClick={() => setTab('scope')}
-            label="개발범위 완료 테스트"
-            hint="요구사항·흐름"
-            count={scopeFiles.length}
-          />
-          <TabButton
-            active={tab === 'code'}
-            onClick={() => setTab('code')}
-            label="코드 정밀 테스트"
-            hint="회귀·커버리지"
-            count={codeFiles.length}
+        {/* 툴바: 트랙 탭(좌) + 보조 도구 메뉴(우) */}
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="flex gap-1 rounded-lg border border-border bg-surface-2/40 p-1">
+            <TabButton
+              active={tab === 'scope'}
+              onClick={() => setTab('scope')}
+              label="개발범위 완료 테스트"
+              hint="요구사항·흐름"
+              count={scopeFiles.length}
+            />
+            <TabButton
+              active={tab === 'code'}
+              onClick={() => setTab('code')}
+              label="코드 정밀 테스트"
+              hint="회귀·커버리지"
+              count={codeFiles.length}
+            />
+          </div>
+          <Menu
+            label="품질 검사"
+            items={[
+              { label: '셀렉터 검증', onClick: () => void validateSelectors(), loading: validating },
+              { label: '단언 강도 분석', onClick: () => void analyzeAssertions(), loading: analyzingAssert },
+              {
+                label: '단언 강화 (약함→강함)',
+                icon: <SparkleIcon width={13} height={13} />,
+                onClick: () => void strengthenAssertions(80, 3),
+                loading: strengthening
+              },
+              { label: '생성 채점 (이력)', onClick: () => void runEval(), loading: evaluating }
+            ]}
           />
         </div>
 
         {tab === 'scope' ? (
           <div className="space-y-5">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[12px] leading-relaxed text-muted">
-                요구사항→체크리스트→테스트. "이 기능이 개발 범위대로 완료·작동하나"를 흐름 단위로 검증합니다.
-              </p>
-              <div className="flex shrink-0 items-center gap-2">
-                {selectedIds.size > 0 && (
-                  <Button
-                    variant="secondary"
-                    icon={<SparkleIcon width={14} height={14} />}
-                    onClick={() => {
-                      void generateTestsForIds([...selectedIds])
-                      setSelectedIds(new Set())
-                    }}
-                  >
-                    선택 생성 ({selectedIds.size})
-                  </Button>
-                )}
-                {hasPending && (
-                  <Button
-                    variant="primary"
-                    icon={<SparkleIcon />}
-                    loading={generatingAll}
-                    loadingText="생성 중…"
-                    onClick={() => generateAllTests()}
-                  >
-                    전체 테스트 생성
-                  </Button>
-                )}
-              </div>
-            </div>
+            <p className="text-[12px] leading-relaxed text-muted">
+              요구사항→체크리스트→테스트. "이 기능이 개발 범위대로 완료·작동하나"를 흐름 단위로 검증합니다.
+            </p>
             {scopeFiles.length > 0 && (
               <TestFilesCard files={scopeFiles} title="개발범위 테스트 파일" />
             )}
@@ -209,20 +199,9 @@ export function TestsPanel(): JSX.Element {
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[12px] leading-relaxed text-muted">
-                코드를 직접 분석한 회귀·커버리지 테스트. 요구사항에 없는 동작도 포함하며, 상세할수록 좋습니다.
-              </p>
-              <Button
-                variant="primary"
-                icon={<FlaskIcon width={14} height={14} />}
-                loading={generatingCode}
-                loadingText="생성 중…"
-                onClick={() => generateCodeTests()}
-              >
-                코드 기준 테스트 생성
-              </Button>
-            </div>
+            <p className="text-[12px] leading-relaxed text-muted">
+              코드를 직접 분석한 회귀·커버리지 테스트. 요구사항에 없는 동작도 포함하며, 상세할수록 좋습니다.
+            </p>
             {codeFiles.length > 0 ? (
               <TestFilesCard files={codeFiles} title="코드 정밀 테스트 파일" />
             ) : (
