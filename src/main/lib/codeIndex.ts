@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { CodeIndex, SelectorValidation } from '@shared/types'
+import type { CodeIndex, SelectorValidation, TestScope } from '@shared/types'
 
 /**
  * grounding 인덱스: 프로젝트의 '진짜' 셀렉터/라우트를 정적 추출.
@@ -55,14 +55,19 @@ export async function buildIndex(projectPath: string): Promise<CodeIndex> {
 }
 
 /** 생성된 테스트의 getByTestId 가 인덱스에 없으면 = 지어낸 셀렉터로 의심 */
-export async function validateSelectors(projectPath: string): Promise<SelectorValidation> {
+export async function validateSelectors(
+  projectPath: string,
+  scope: TestScope = 'all'
+): Promise<SelectorValidation> {
   const index = (await getIndex(projectPath)) ?? (await buildIndex(projectPath))
   const real = new Set(index.testids)
   const dir = join(qaDir(projectPath), 'tests')
+  const inScope = (f: string): boolean =>
+    scope === 'all' ? true : scope === 'code' ? f.startsWith('code-') : !f.startsWith('code-')
   const invented: SelectorValidation['invented'] = []
   let specs = 0
   if (existsSync(dir)) {
-    for (const f of (await fs.readdir(dir)).filter((x) => x.endsWith('.spec.ts'))) {
+    for (const f of (await fs.readdir(dir)).filter((x) => x.endsWith('.spec.ts') && inScope(x))) {
       specs++
       const src = await fs.readFile(join(dir, f), 'utf8').catch(() => '')
       for (const m of src.matchAll(/getByTestId\s*\(\s*["'`]([^"'`]+)["'`]/g)) {

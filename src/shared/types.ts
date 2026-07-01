@@ -240,6 +240,9 @@ export interface TestFile {
   fixmes: number
 }
 
+/** 품질 검사/분석 대상 트랙 (전체 · 개발범위 완료 · 코드 정밀) */
+export type TestScope = 'all' | 'scope' | 'code'
+
 export type ChecklistStatus = 'draft' | 'approved'
 
 /** Given/When/Then 합격기준 묶음 (한 요구사항 → 한 체크리스트) */
@@ -465,20 +468,21 @@ export interface AutoQaApi {
   generateCodeTests(projectPath: string): Promise<number>
   /** .qa/tests 의 실제 생성된 spec 파일 목록 (체크리스트 없이도 보임) */
   listTestFiles(projectPath: string): Promise<TestFile[]>
-  /** [정적] 생성된 테스트의 단언 강도 분석 (실행 없음) */
-  analyzeAssertions(projectPath: string): Promise<AssertionReport>
+  /** [정적] 생성된 테스트의 단언 강도 분석 (실행 없음). scope=대상 트랙 */
+  analyzeAssertions(projectPath: string, scope?: TestScope): Promise<AssertionReport>
   /** [AI 루프] 약한/공허 단언을 강한 값 단언으로 재작성 → 목표 강도까지 반복 */
   strengthenLoop(
     projectPath: string,
     targetPct: number,
-    maxIterations: number
+    maxIterations: number,
+    scope?: TestScope
   ): Promise<AssertionReport>
   /** [정적] 생성 품질 채점 + 이력 기록 (프롬프트/규칙 변경 전후 비교) */
-  runEval(projectPath: string): Promise<EvalResult>
+  runEval(projectPath: string, scope?: TestScope): Promise<EvalResult>
   /** grounding 인덱스 재빌드 (진짜 셀렉터/라우트 추출) */
   rebuildIndex(projectPath: string): Promise<CodeIndex>
-  /** 생성된 테스트의 셀렉터를 인덱스로 검증 (지어낸 것 탐지) */
-  validateSelectors(projectPath: string): Promise<SelectorValidation>
+  /** 생성된 테스트의 셀렉터를 인덱스로 검증 (지어낸 것 탐지). scope=대상 트랙 */
+  validateSelectors(projectPath: string, scope?: TestScope): Promise<SelectorValidation>
 
   /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only=단일 spec 또는 트랙 spec 목록 */
   runTests(projectPath: string, only?: string | string[]): Promise<RunReport>

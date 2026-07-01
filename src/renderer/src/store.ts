@@ -17,7 +17,8 @@ import type {
   AssertionReport,
   SelectorValidation,
   EvalResult,
-  TestFile
+  TestFile,
+  TestScope
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -114,12 +115,12 @@ interface AppState {
   testFiles: TestFile[]
   loadTestFiles: () => Promise<void>
   assertionReport: AssertionReport | null
-  analyzeAssertions: () => Promise<void>
-  strengthenAssertions: (targetPct: number, maxIterations: number) => Promise<void>
+  analyzeAssertions: (scope?: TestScope) => Promise<void>
+  strengthenAssertions: (targetPct: number, maxIterations: number, scope?: TestScope) => Promise<void>
   selectorValidation: SelectorValidation | null
-  validateSelectors: () => Promise<void>
+  validateSelectors: (scope?: TestScope) => Promise<void>
   evalResult: EvalResult | null
-  runEval: () => Promise<void>
+  runEval: (scope?: TestScope) => Promise<void>
 
   runTests: (only?: string | string[]) => Promise<void>
   runFailedTests: () => Promise<void>
@@ -509,11 +510,11 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    analyzeAssertions: async () => {
+    analyzeAssertions: async (scope = 'all') => {
       const { project } = get()
       if (!project) return
       await withBusy('analyzeAssertions', async () => {
-        const assertionReport = await window.api.analyzeAssertions(project.path)
+        const assertionReport = await window.api.analyzeAssertions(project.path, scope)
         set({ assertionReport })
         get().pushToast(
           assertionReport.vacuous > 0 ? 'info' : 'success',
@@ -522,11 +523,11 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    validateSelectors: async () => {
+    validateSelectors: async (scope = 'all') => {
       const { project } = get()
       if (!project) return
       await withBusy('validateSelectors', async () => {
-        const selectorValidation = await window.api.validateSelectors(project.path)
+        const selectorValidation = await window.api.validateSelectors(project.path, scope)
         set({ selectorValidation })
         const n = selectorValidation.invented.length
         get().pushToast(
@@ -536,11 +537,11 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    strengthenAssertions: async (targetPct, maxIterations) => {
+    strengthenAssertions: async (targetPct, maxIterations, scope = 'all') => {
       const { project } = get()
       if (!project) return
       await withBusy('strengthenLoop', async () => {
-        const report = await window.api.strengthenLoop(project.path, targetPct, maxIterations)
+        const report = await window.api.strengthenLoop(project.path, targetPct, maxIterations, scope)
         set({ assertionReport: report })
         get().pushToast(
           report.vacuous + report.weak === 0 ? 'success' : 'info',
@@ -549,11 +550,11 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    runEval: async () => {
+    runEval: async (scope = 'all') => {
       const { project } = get()
       if (!project) return
       await withBusy('runEval', async () => {
-        const evalResult = await window.api.runEval(project.path)
+        const evalResult = await window.api.runEval(project.path, scope)
         set({ evalResult })
         const { current, prev } = evalResult
         const delta = prev ? current.strengthPct - prev.strengthPct : null

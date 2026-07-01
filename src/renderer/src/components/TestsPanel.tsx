@@ -5,6 +5,7 @@ import type {
   Checklist,
   EvalResult,
   SelectorValidation,
+  TestScope,
   TestFile
 } from '@shared/types'
 import { useStore } from '../store'
@@ -33,6 +34,8 @@ export function TestsPanel(): JSX.Element {
   const generateTestsForIds = useStore((s) => s.generateTestsForIds)
   const [tab, setTab] = useState<'scope' | 'code' | 'quality'>('scope')
   const [qtab, setQtab] = useState<'assertion' | 'selector' | 'eval'>('assertion')
+  const [qscope, setQscope] = useState<TestScope>('all')
+  const scopeLabel = qscope === 'all' ? '전체' : qscope === 'scope' ? '개발범위 완료' : '코드 정밀'
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const toggleId = (id: string): void =>
     setSelectedIds((prev) => {
@@ -189,21 +192,31 @@ export function TestsPanel(): JSX.Element {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* 품질 검사 서브탭 — 결과는 이 탭 안에서만, 테스트 목록 안 흔듦 */}
-            <div className="flex w-fit gap-1 rounded-lg border border-border bg-surface-2/40 p-1">
-              <QSubTab active={qtab === 'assertion'} onClick={() => setQtab('assertion')} label="단언 강도" />
-              <QSubTab active={qtab === 'selector'} onClick={() => setQtab('selector')} label="셀렉터 검증" />
-              <QSubTab active={qtab === 'eval'} onClick={() => setQtab('eval')} label="생성 채점" />
+            {/* 품질 검사 서브탭(좌) + 대상 트랙 선택(우) — 결과는 이 탭 안에서만 */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex w-fit gap-1 rounded-lg border border-border bg-surface-2/40 p-1">
+                <QSubTab active={qtab === 'assertion'} onClick={() => setQtab('assertion')} label="단언 강도" />
+                <QSubTab active={qtab === 'selector'} onClick={() => setQtab('selector')} label="셀렉터 검증" />
+                <QSubTab active={qtab === 'eval'} onClick={() => setQtab('eval')} label="생성 채점" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted">대상</span>
+                <div className="flex w-fit gap-1 rounded-lg border border-border bg-surface-2/40 p-1">
+                  <QSubTab active={qscope === 'all'} onClick={() => setQscope('all')} label="전체" />
+                  <QSubTab active={qscope === 'scope'} onClick={() => setQscope('scope')} label="개발범위" />
+                  <QSubTab active={qscope === 'code'} onClick={() => setQscope('code')} label="코드" />
+                </div>
+              </div>
             </div>
 
             {qtab === 'assertion' && (
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-[12px] text-muted">
-                    테스트가 '진짜 값/상태'를 검증하나 — 커버리지보다 중요한 지표 (정적 분석).
+                    <span className="text-text">{scopeLabel}</span> 테스트가 '진짜 값/상태'를 검증하나 — 커버리지보다 중요한 지표 (정적).
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="secondary" loading={analyzingAssert} loadingText="분석 중…" onClick={() => analyzeAssertions()}>
+                    <Button variant="secondary" loading={analyzingAssert} loadingText="분석 중…" onClick={() => analyzeAssertions(qscope)}>
                       {assertionReport ? '다시 분석' : '분석'}
                     </Button>
                     {/* 강화는 분석 결과가 있고, 강화할 약함·공허가 있을 때만 노출 */}
@@ -214,7 +227,7 @@ export function TestsPanel(): JSX.Element {
                         loading={strengthening}
                         loadingText="강화 중…"
                         title="약한·공허 단언을 강한 값 단언으로 재작성 (목표 80% · 최대 3회)"
-                        onClick={() => strengthenAssertions(80, 3)}
+                        onClick={() => strengthenAssertions(80, 3, qscope)}
                       >
                         약함→강함 강화
                       </Button>
@@ -224,7 +237,7 @@ export function TestsPanel(): JSX.Element {
                 {assertionReport ? (
                   <AssertionStrengthReport report={assertionReport} />
                 ) : (
-                  <QEmpty text="'분석'을 눌러 단언 강도를 확인하세요." />
+                  <QEmpty text={`'분석'을 눌러 ${scopeLabel} 단언 강도를 확인하세요.`} />
                 )}
               </div>
             )}
@@ -233,16 +246,16 @@ export function TestsPanel(): JSX.Element {
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-[12px] text-muted">
-                    테스트가 코드에 없는 testid 를 지어내 쓰지 않았나 (환각 탐지).
+                    <span className="text-text">{scopeLabel}</span> 테스트가 코드에 없는 testid 를 지어내 쓰지 않았나 (환각 탐지).
                   </p>
-                  <Button variant="secondary" loading={validating} loadingText="검증 중…" onClick={() => validateSelectors()}>
+                  <Button variant="secondary" loading={validating} loadingText="검증 중…" onClick={() => validateSelectors(qscope)}>
                     검증
                   </Button>
                 </div>
                 {selectorValidation ? (
                   <SelectorValidationReport report={selectorValidation} />
                 ) : (
-                  <QEmpty text="'검증'을 눌러 셀렉터를 확인하세요." />
+                  <QEmpty text={`'검증'을 눌러 ${scopeLabel} 셀렉터를 확인하세요.`} />
                 )}
               </div>
             )}
@@ -251,13 +264,13 @@ export function TestsPanel(): JSX.Element {
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-[12px] text-muted">
-                    프롬프트·규칙을 바꾼 뒤 다시 채점하면 점수가 오르는지 이력으로 봅니다.
+                    <span className="text-text">{scopeLabel}</span> 생성 품질 점수. 프롬프트·규칙을 바꾼 뒤 다시 채점하면 오르는지 이력으로 봅니다.
                   </p>
-                  <Button variant="secondary" loading={evaluating} loadingText="채점 중…" onClick={() => runEval()}>
+                  <Button variant="secondary" loading={evaluating} loadingText="채점 중…" onClick={() => runEval(qscope)}>
                     채점
                   </Button>
                 </div>
-                {evalResult ? <EvalReport result={evalResult} /> : <QEmpty text="'채점'을 눌러 생성 점수를 확인하세요." />}
+                {evalResult ? <EvalReport result={evalResult} /> : <QEmpty text={`'채점'을 눌러 ${scopeLabel} 생성 점수를 확인하세요.`} />}
               </div>
             )}
           </div>

@@ -37,7 +37,8 @@ import type {
   CoverageStatus,
   EvalResult,
   EvalScore,
-  TestFile
+  TestFile,
+  TestScope
 } from '@shared/types'
 import { AUTH_ENV, STORAGE_STATE_REL } from './auth'
 import { composeRules, ensureRules } from './rules'
@@ -732,11 +733,21 @@ const STRONG_MATCHERS =
 const WEAK_MATCHERS = /\.(toBeVisible|toBeAttached|toBeInViewport|toBeDefined|toBeTruthy)\b/
 
 /** 생성된 테스트의 단언 강도를 정적 분석 (파일 읽기 + 휴리스틱, 사이드이펙트 0) */
-export async function analyzeAssertions(projectPath: string): Promise<AssertionReport> {
+/** 파일명이 대상 트랙(scope=요구사항, code=코드기준)에 속하나 */
+function inScope(file: string, scope: TestScope): boolean {
+  if (scope === 'all') return true
+  const isCode = file.startsWith('code-')
+  return scope === 'code' ? isCode : !isCode
+}
+
+export async function analyzeAssertions(
+  projectPath: string,
+  scope: TestScope = 'all'
+): Promise<AssertionReport> {
   const dir = testsDir(projectPath)
   const tests: AssertionTest[] = []
   if (existsSync(dir)) {
-    const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts'))
+    const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts') && inScope(f, scope))
     for (const f of files.sort()) {
       const src = await fs.readFile(join(dir, f), 'utf8').catch(() => '')
       for (const t of splitTests(src)) {
@@ -850,9 +861,10 @@ export async function runStrengthenLoop(
   projectPath: string,
   targetPct: number,
   maxIterations: number,
-  onProgress: (e: ProgressEvent) => void
+  onProgress: (e: ProgressEvent) => void,
+  scope: TestScope = 'all'
 ): Promise<AssertionReport> {
-  let report = await analyzeAssertions(projectPath)
+  let report = await analyzeAssertions(projectPath, scope)
   if (report.total === 0) {
     onProgress({ phase: 'tests', message: '생성된 테스트가 없습니다.', done: true })
     return report
@@ -888,7 +900,7 @@ export async function runStrengthenLoop(
       onProgress
     })
     if (!res.ok) throw new Error(res.error || '단언 강화 실패')
-    const next = await analyzeAssertions(projectPath)
+    const next = await analyzeAssertions(projectPath, scope)
     // 진전 없으면(강한 단언 수가 늘지 않음) 수렴으로 중단 — 무한 no-op 방지
     if (next.strong <= report.strong) {
       report = next
@@ -907,9 +919,9 @@ export async function runStrengthenLoop(
 const evalHistoryPath = (p: string): string => join(qaDir(p), 'evals', 'history.json')
 
 /** 현재 생성된 테스트의 품질을 채점하고 이력에 기록 (정적, 실행 없음) */
-export async function runEval(projectPath: string): Promise<EvalResult> {
-  const a = await analyzeAssertions(projectPath)
-  const v = await validateSelectors(projectPath)
+export async function runEval(projectPath: string, scope: TestScope = 'all'): Promise<EvalResult> {
+  const a = await analyzeAssertions(projectPath, scope)
+  const v = await validateSelectors(projectPath, scope)
   const current: EvalScore = {
     at: new Date().toISOString(),
     total: a.total,

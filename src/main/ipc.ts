@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { IPC, type ProgressEvent } from '@shared/types'
+import { IPC, type ProgressEvent, type TestScope } from '@shared/types'
 import {
   addRequirementText,
   analyzeAssertions,
@@ -161,17 +161,19 @@ export function registerIpc(): void {
     const config = await getConfig(projectPath)
     return generateAllTests(projectPath, config.baseURL, progressSender(e))
   })
-  ipcMain.handle(IPC.analyzeAssertions, (_e, projectPath: string) =>
-    analyzeAssertions(projectPath)
+  ipcMain.handle(IPC.analyzeAssertions, (_e, projectPath: string, scope?: TestScope) =>
+    analyzeAssertions(projectPath, scope)
   )
   ipcMain.handle(
     IPC.strengthenLoop,
-    (e, projectPath: string, targetPct: number, maxIterations: number) =>
-      runStrengthenLoop(projectPath, targetPct, maxIterations, progressSender(e))
+    (e, projectPath: string, targetPct: number, maxIterations: number, scope?: TestScope) =>
+      runStrengthenLoop(projectPath, targetPct, maxIterations, progressSender(e), scope)
   )
   ipcMain.handle(IPC.rebuildIndex, (_e, projectPath: string) => buildIndex(projectPath))
-  ipcMain.handle(IPC.validateSelectors, (_e, projectPath: string) => validateSelectors(projectPath))
-  ipcMain.handle(IPC.runEval, (_e, projectPath: string) => runEval(projectPath))
+  ipcMain.handle(IPC.validateSelectors, (_e, projectPath: string, scope?: TestScope) =>
+    validateSelectors(projectPath, scope)
+  )
+  ipcMain.handle(IPC.runEval, (_e, projectPath: string, scope?: TestScope) => runEval(projectPath, scope))
   ipcMain.handle(IPC.generateCodeTests, (e, projectPath: string) =>
     generateCodeTests(projectPath, progressSender(e))
   )
