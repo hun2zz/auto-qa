@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useEffect, useMemo, useState, type JSX } from 'react'
 import type { Checklist, RequirementFile } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
@@ -11,8 +11,20 @@ export function ChecklistsPanel(): JSX.Element {
   const checklists = useStore((s) => s.checklists)
   const approveAllChecklists = useStore((s) => s.approveAllChecklists)
   const approvingAll = useStore((s) => !!s.busyKeys['approveAll'])
+  const setActiveStep = useStore((s) => s.setActiveStep)
 
   const hasDraft = checklists.some((c) => c.status !== 'approved')
+
+  // 요구사항별 체크리스트를 1회만 그룹화 (매 렌더마다 요구사항 수 × 체크리스트 수 재필터 방지)
+  const byRequirement = useMemo(() => {
+    const map = new Map<string, Checklist[]>()
+    for (const c of checklists) {
+      const arr = map.get(c.sourceRequirement)
+      if (arr) arr.push(c)
+      else map.set(c.sourceRequirement, [c])
+    }
+    return map
+  }, [checklists])
 
   return (
     <>
@@ -40,6 +52,11 @@ export function ChecklistsPanel(): JSX.Element {
             icon={<ChecklistIcon width={26} height={26} />}
             title="먼저 요구사항을 업로드하세요"
             desc="1단계에서 요구사항 문서를 업로드하면 여기서 체크리스트를 생성할 수 있습니다."
+            action={
+              <Button variant="secondary" onClick={() => setActiveStep('requirements')}>
+                요구사항 단계로 이동 →
+              </Button>
+            }
           />
         ) : (
           <div className="space-y-6">
@@ -47,7 +64,7 @@ export function ChecklistsPanel(): JSX.Element {
               <RequirementGroup
                 key={req.path}
                 requirement={req}
-                checklists={checklists.filter((c) => c.sourceRequirement === req.name)}
+                checklists={byRequirement.get(req.name) ?? []}
               />
             ))}
           </div>

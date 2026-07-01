@@ -15,6 +15,7 @@ export function RunPanel(): JSX.Element {
   const running = useStore((s) => !!s.busyKeys['runTests'])
   const checklists = useStore((s) => s.checklists)
   const testFiles = useStore((s) => s.testFiles)
+  const setActiveStep = useStore((s) => s.setActiveStep)
   // 실제 .qa/tests 의 spec 이 하나라도 있으면 실행 가능 (코드 기준 테스트는 체크리스트가 없음)
   const hasSpecs = testFiles.length > 0 || checklists.some((c) => c.specPath)
   const scopeNames = testFiles.filter((f) => f.kind === 'checklist').map((f) => f.name)
@@ -83,7 +84,15 @@ export function RunPanel(): JSX.Element {
                 ? 'QA 실행을 누르면 dev 서버 구동 후 테스트가 자동으로 실행됩니다.'
                 : '먼저 3단계에서 테스트 코드를 생성하세요.'
             }
-            action={hasSpecs ? runBtn : undefined}
+            action={
+              hasSpecs ? (
+                runBtn
+              ) : (
+                <Button variant="secondary" onClick={() => setActiveStep('tests')}>
+                  테스트 생성 단계로 이동 →
+                </Button>
+              )
+            }
           />
         ) : (
           <ReportView report={lastReport} />

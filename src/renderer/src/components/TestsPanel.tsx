@@ -32,6 +32,7 @@ export function TestsPanel(): JSX.Element {
   const evalResult = useStore((s) => s.evalResult)
   const testFiles = useStore((s) => s.testFiles)
   const generateTestsForIds = useStore((s) => s.generateTestsForIds)
+  const setActiveStep = useStore((s) => s.setActiveStep)
   const [tab, setTab] = useState<'scope' | 'code' | 'quality'>('scope')
   const [qtab, setQtab] = useState<'assertion' | 'selector' | 'eval'>('assertion')
   const [qscope, setQscope] = useState<TestScope>('all')
@@ -134,6 +135,11 @@ export function TestsPanel(): JSX.Element {
                 icon={<FlaskIcon width={26} height={26} />}
                 title="승인된 체크리스트가 없습니다"
                 desc="1·2단계에서 요구사항을 올리고 체크리스트를 승인하면 여기서 개발범위 완료 테스트를 만듭니다."
+                action={
+                  <Button variant="secondary" onClick={() => setActiveStep('checklists')}>
+                    체크리스트 단계로 이동 →
+                  </Button>
+                }
               />
             ) : (
               <div className="space-y-6">
