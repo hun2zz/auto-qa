@@ -1,5 +1,52 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ChevronIcon } from './icons'
+import { ChevronIcon, CloseIcon } from './icons'
+
+/** 오버레이 모달 — 온디맨드 결과/도구를 레이아웃 흔들지 않고 띄운다. */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children
+}: {
+  open: boolean
+  onClose: () => void
+  title?: string
+  children: ReactNode
+}): JSX.Element | null {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center p-6 pt-[8vh]"
+      onMouseDown={onClose}
+    >
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div
+        className="relative z-10 flex max-h-[84vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_20px_70px_-15px_rgba(0,0,0,0.9)]"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+          <h3 className="text-sm font-semibold text-text">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted transition-colors hover:text-text"
+          >
+            <CloseIcon width={18} height={18} />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-5">{children}</div>
+      </div>
+    </div>
+  )
+}
 
 export interface MenuItem {
   label: string

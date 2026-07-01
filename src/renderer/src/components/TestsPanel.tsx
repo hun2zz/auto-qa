@@ -9,7 +9,7 @@ import type {
 } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
-import { PanelHeader, PanelBody, EmptyState, Badge, Menu } from './common'
+import { PanelHeader, PanelBody, EmptyState, Badge, Menu, Modal } from './common'
 import { FlaskIcon, SparkleIcon, CheckIcon, PlayIcon } from './icons'
 
 export function TestsPanel(): JSX.Element {
@@ -32,6 +32,7 @@ export function TestsPanel(): JSX.Element {
   const testFiles = useStore((s) => s.testFiles)
   const generateTestsForIds = useStore((s) => s.generateTestsForIds)
   const [tab, setTab] = useState<'scope' | 'code'>('scope')
+  const [openReport, setOpenReport] = useState<null | 'eval' | 'selector' | 'assertion'>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const toggleId = (id: string): void =>
     setSelectedIds((prev) => {
@@ -92,23 +93,6 @@ export function TestsPanel(): JSX.Element {
         }
       />
       <PanelBody>
-        {/* 공통 분석 결과 (두 트랙 전체 대상) */}
-        {evalResult && (
-          <div className="mb-5">
-            <EvalReport result={evalResult} />
-          </div>
-        )}
-        {selectorValidation && (
-          <div className="mb-5">
-            <SelectorValidationReport report={selectorValidation} />
-          </div>
-        )}
-        {assertionReport && (
-          <div className="mb-5">
-            <AssertionStrengthReport report={assertionReport} />
-          </div>
-        )}
-
         {/* 툴바: 트랙 탭(좌) + 보조 도구 메뉴(우) */}
         <div className="mb-5 flex items-center justify-between gap-3">
           <div className="flex gap-1 rounded-lg border border-border bg-surface-2/40 p-1">
@@ -130,18 +114,65 @@ export function TestsPanel(): JSX.Element {
           <Menu
             label="품질 검사"
             items={[
-              { label: '셀렉터 검증', onClick: () => void validateSelectors(), loading: validating },
-              { label: '단언 강도 분석', onClick: () => void analyzeAssertions(), loading: analyzingAssert },
+              {
+                label: '셀렉터 검증',
+                loading: validating,
+                onClick: () => {
+                  setOpenReport('selector')
+                  void validateSelectors()
+                }
+              },
+              {
+                label: '단언 강도 분석',
+                loading: analyzingAssert,
+                onClick: () => {
+                  setOpenReport('assertion')
+                  void analyzeAssertions()
+                }
+              },
               {
                 label: '단언 강화 (약함→강함)',
                 icon: <SparkleIcon width={13} height={13} />,
-                onClick: () => void strengthenAssertions(80, 3),
-                loading: strengthening
+                loading: strengthening,
+                onClick: () => {
+                  setOpenReport('assertion')
+                  void strengthenAssertions(80, 3)
+                }
               },
-              { label: '생성 채점 (이력)', onClick: () => void runEval(), loading: evaluating }
+              {
+                label: '생성 채점 (이력)',
+                loading: evaluating,
+                onClick: () => {
+                  setOpenReport('eval')
+                  void runEval()
+                }
+              }
             ]}
           />
         </div>
+
+        {/* 분석 결과 모달 (레이아웃 안 흔들게 오버레이) */}
+        <Modal open={openReport === 'assertion'} onClose={() => setOpenReport(null)} title="단언 강도">
+          {assertionReport ? (
+            <AssertionStrengthReport report={assertionReport} />
+          ) : (
+            <p className="py-8 text-center text-sm text-muted">분석 중…</p>
+          )}
+        </Modal>
+        <Modal open={openReport === 'selector'} onClose={() => setOpenReport(null)} title="셀렉터 검증">
+          {selectorValidation ? (
+            <SelectorValidationReport report={selectorValidation} />
+          ) : (
+            <p className="py-8 text-center text-sm text-muted">검증 중…</p>
+          )}
+        </Modal>
+        <Modal open={openReport === 'eval'} onClose={() => setOpenReport(null)} title="생성 채점">
+          {evalResult ? (
+            <EvalReport result={evalResult} />
+          ) : (
+            <p className="py-8 text-center text-sm text-muted">채점 중…</p>
+          )}
+        </Modal>
 
         {tab === 'scope' ? (
           <div className="space-y-5">
