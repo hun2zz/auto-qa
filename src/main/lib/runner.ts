@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { isAbsolute, join } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
 import type {
   HealChange,
   HealResult,
@@ -40,6 +40,32 @@ async function mapLimit<T, R>(
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
   return out
+}
+
+/** 변환검증이 spec 을 변형하기 전 원본을 백업하는 폴더 (.qa/.bak). */
+const mutationBakDir = (p: string): string => join(qaDir(p), '.bak')
+
+/**
+ * 변환검증(negativeControl)이 변형 상태로 남긴 spec 을 원본으로 되돌린다.
+ * 변형 직전 .qa/.bak 에 원본을 백업하므로, 프로세스가 중간에 죽어 finally 복원이
+ * 안 됐어도 다음 실행(여기 또는 doRun) 시작 때 방어적으로 복원된다. 복원 수 반환.
+ */
+async function restoreMutationBackups(projectPath: string): Promise<number> {
+  const dir = mutationBakDir(projectPath)
+  if (!existsSync(dir)) return 0
+  const baks = (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts'))
+  let n = 0
+  for (const f of baks) {
+    try {
+      const content = await fs.readFile(join(dir, f), 'utf8')
+      await fs.writeFile(join(testsDir(projectPath), f), content, 'utf8')
+      await fs.rm(join(dir, f), { force: true })
+      n++
+    } catch {
+      /* 개별 실패는 무시하고 나머지 계속 */
+    }
+  }
+  return n
 }
 
 /** url 의 프로토콜/호스트(포트 포함)를 base 의 것으로 교체. 경로/쿼리는 유지. */
@@ -114,6 +140,10 @@ async function doRun(
     const healed = await restoreSpecImports(projectPath)
     if (healed > 0)
       onProgress({ phase: 'playwright', message: `커버리지 잔여 패치 ${healed}개 복원됨` })
+    // 방어: 변환검증이 죽어 변형된 채 남은 spec 도 실행 전 원본으로 복원.
+    const unmutated = await restoreMutationBackups(projectPath)
+    if (unmutated > 0)
+      onProgress({ phase: 'playwright', message: `변환검증 잔여 변형 ${unmutated}개 복원됨` })
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
@@ -137,7 +167,7 @@ async function doRun(
       const prev = await getLastReport(projectPath)
       if (prev && prev.results.length) toSave = mergeReports(prev, stamped)
     }
-    await persist(projectPath, toSave)
+    await persistSafe(projectPath, toSave, onProgress)
     announce(toSave, onProgress)
     return toSave
   } catch (e) {
@@ -173,7 +203,7 @@ export async function healAndRerun(
       const prev = await getLastReport(projectPath)
       if (prev && prev.results.length) out = mergeReports(prev, report)
     }
-    await persist(projectPath, out)
+    await persistSafe(projectPath, out, onProgress)
     return out
   }
   try {
@@ -285,7 +315,7 @@ export async function healAndRerun(
     return { attempted, healed, realBugs, report, changes, notes }
   } catch (e) {
     const report = fatalReport((e as Error).message)
-    await persist(projectPath, report).catch(() => {})
+    await persistSafe(projectPath, report, onProgress)
     onProgress({ phase: 'devserver', message: report.fatalError!, error: true, done: true })
     return { attempted: 0, healed: 0, realBugs: 0, report, changes: [], notes: [report.fatalError!] }
   } finally {
@@ -321,6 +351,10 @@ export async function negativeControl(
     scope === 'all' ? true : scope === 'code' ? f.startsWith('code-') : !f.startsWith('code-')
   let server: DevServerHandle | null = null
   try {
+    // 방어: 직전 변환검증이 죽어 변형된 채 남은 spec 을 baseline 전에 원본으로 복원.
+    const restored = await restoreMutationBackups(projectPath)
+    if (restored > 0)
+      onProgress({ phase: 'playwright', message: `이전 변형 잔여 ${restored}개 복원 후 시작` })
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
@@ -346,12 +380,17 @@ export async function negativeControl(
       const { mutated, count } = mutateExpectations(before)
       if (count === 0) return { spec: file, verdict: 'no-assertion', mutations: 0 }
       onProgress({ phase: 'playwright', message: `변형 검증: ${file}` })
+      // 변형 전 원본을 .qa/.bak 에 백업 → 프로세스가 죽어도 다음 실행 시작 시 복원됨(크래시 가드).
+      const bak = join(mutationBakDir(projectPath), basename(file))
+      await fs.mkdir(mutationBakDir(projectPath), { recursive: true })
+      await fs.writeFile(bak, before, 'utf8')
       await fs.writeFile(specPath, mutated, 'utf8')
       try {
         const r = await runPlaywright({ projectPath, onProgress, extraEnv, only: file })
         return { spec: file, verdict: r.failed > 0 ? 'sensitive' : 'vacuous', mutations: count }
       } finally {
         await fs.writeFile(specPath, before, 'utf8') // 원본 복원 (사이드이펙트 0)
+        await fs.rm(bak, { force: true }) // 정상 복원됐으니 백업 제거
       }
     })
     const specs: SensitivitySpec[] = results.filter((s): s is SensitivitySpec => s !== null)
@@ -558,6 +597,26 @@ function firstLine(s: string): string {
 
 async function persist(projectPath: string, report: RunReport): Promise<void> {
   await fs.writeFile(lastReportPath(projectPath), JSON.stringify(report, null, 2), 'utf8')
+}
+
+/**
+ * 리포트를 저장하되, 저장 실패를 '조용히 삼키지도' '실행 전체 실패로 만들지도' 않는다.
+ * 테스트는 실제로 돌았으므로 결과는 유지하고, 저장 실패만 경고로 노출한다(리포트 유실 인지 가능).
+ */
+async function persistSafe(
+  projectPath: string,
+  report: RunReport,
+  onProgress: (e: ProgressEvent) => void
+): Promise<void> {
+  try {
+    await persist(projectPath, report)
+  } catch (e) {
+    onProgress({
+      phase: 'playwright',
+      message: `⚠️ 결과 리포트 저장 실패 (테스트 결과는 유효): ${(e as Error).message}`,
+      error: true
+    })
+  }
 }
 
 export async function getLastReport(projectPath: string): Promise<RunReport | null> {

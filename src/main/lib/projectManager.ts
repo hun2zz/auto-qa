@@ -92,7 +92,11 @@ async function ensureScaffold(path: string): Promise<void> {
   await fs.writeFile(join(qaDir(path), 'playwright.config.ts'), playwrightConfigTemplate(), 'utf8')
   const gi = join(qaDir(path), '.gitignore')
   if (!existsSync(gi)) {
-    await fs.writeFile(gi, ['reports/', 'test-results/', '.auth/', '.work/', ''].join('\n'), 'utf8')
+    await fs.writeFile(
+      gi,
+      ['reports/', 'test-results/', '.auth/', '.work/', '.bak/', ''].join('\n'),
+      'utf8'
+    )
   }
 }
 
