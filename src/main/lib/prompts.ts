@@ -343,6 +343,11 @@ export function healPrompt(args: {
 - 실패 내역(에러 메시지):
 ${args.failures}
 
+# ⚠️ 너는 테스트를 '실행'할 수 없다 (Bash 없음)
+- 실행해서 검증하려 하지 마라. Read/Grep 으로 코드를 읽고, **위 에러 메시지만으로** 판단해 **바로 수정(Edit/Write)** 한다.
+- 특히 'strict mode violation ... resolved to N elements' 에러는 Playwright 가 정답 셀렉터(예: { exact: true })까지 알려주므로, 실행 없이 확정적으로 고칠 수 있다.
+- 수정을 미루거나 '승인/실행이 필요하다'고 대기하지 마라 — 확정되면 즉시 파일을 고치고 HEALED 로 보고한다.
+
 # 1단계: 분류 (가장 중요)
 spec 과 프로젝트 코드를 Read/Grep 해서 각 실패가 무엇인지 판정:
 - **드리프트(DRIFT)**: DOM/셀렉터만 바뀌고 '검증하려는 동작·상태는 그대로 존재'. (버튼 id 변경, 텍스트 약간 변경, 구조 리팩터)

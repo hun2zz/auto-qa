@@ -185,7 +185,7 @@ export async function healAndRerun(
             storageStateRel: null,
             failures: failures.map((f) => `- ${f.title}: ${trim(f.error)}`).join('\n')
           }),
-        allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
+        allowedTools: ['Read', 'Grep', 'Glob', 'Edit', 'Write'],
         phase: 'tests',
         onProgress
       })
