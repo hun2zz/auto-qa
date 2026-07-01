@@ -63,8 +63,8 @@ export function Sidebar(): JSX.Element {
       <div className="drag flex h-[38px] items-center px-5" />
       <div className="px-5 pb-5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand/20 ring-1 ring-brand/40">
-            <FlaskIcon className="text-brand-soft" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-text ring-1 ring-border">
+            <FlaskIcon />
           </div>
           <div className="leading-tight">
             <h1 className="text-[15px] font-semibold tracking-tight text-text">Auto QA</h1>
@@ -127,11 +127,11 @@ export function Sidebar(): JSX.Element {
               disabled={disabled || locked}
               onClick={() => setActiveStep(step.id)}
               className={[
-                'no-drag group flex items-center gap-3 rounded-xl px-3 py-2.5 text-left',
-                'transition-all duration-150',
+                'no-drag group flex items-center gap-3 rounded-lg px-3 py-2 text-left',
+                'transition-colors duration-150',
                 state === 'active'
-                  ? 'bg-brand/15 text-text ring-1 ring-brand/40'
-                  : 'text-muted hover:bg-surface-2 hover:text-text',
+                  ? 'bg-surface-2 text-text'
+                  : 'text-muted hover:bg-surface-2/50 hover:text-text',
                 disabled || locked ? 'cursor-not-allowed opacity-40 hover:bg-transparent' : ''
               ].join(' ')}
             >
@@ -139,7 +139,7 @@ export function Sidebar(): JSX.Element {
               <span
                 className={[
                   'flex h-5 w-5 items-center justify-center',
-                  state === 'active' ? 'text-brand-soft' : ''
+                  state === 'active' ? 'text-text' : ''
                 ].join(' ')}
               >
                 {step.icon}

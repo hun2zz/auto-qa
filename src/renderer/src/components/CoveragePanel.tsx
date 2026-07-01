@@ -42,9 +42,9 @@ function CodeCoverageSection(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      <article className="overflow-hidden rounded-xl border border-brand/30 bg-brand/[0.04]">
+      <article className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="flex items-center gap-3 px-5 py-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand-soft ring-1 ring-brand/30">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text ring-1 ring-border">
             <FlaskIcon />
           </div>
           <div className="min-w-0 flex-1">

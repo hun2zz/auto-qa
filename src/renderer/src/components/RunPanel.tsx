@@ -145,7 +145,7 @@ function SelfHealing({ report }: { report: RunReport }): JSX.Element | null {
   if (!canHeal && !lastHeal) return null
 
   return (
-    <div className="rounded-xl border border-brand/30 bg-brand/[0.06] p-4">
+    <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
@@ -180,7 +180,7 @@ function HealNotes({ heal }: { heal: HealResult }): JSX.Element {
   const hasChanges = changes.length > 0
 
   return (
-    <div className="mt-3 border-t border-brand/20 pt-3">
+    <div className="mt-3 border-t border-border pt-3">
       <button
         type="button"
         disabled={!hasChanges}

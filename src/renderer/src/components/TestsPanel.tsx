@@ -204,18 +204,21 @@ export function TestsPanel(): JSX.Element {
                   </p>
                   <div className="flex gap-2">
                     <Button variant="secondary" loading={analyzingAssert} loadingText="분석 중…" onClick={() => analyzeAssertions()}>
-                      분석
+                      {assertionReport ? '다시 분석' : '분석'}
                     </Button>
-                    <Button
-                      variant="secondary"
-                      icon={<SparkleIcon width={14} height={14} />}
-                      loading={strengthening}
-                      loadingText="강화 중…"
-                      title="약한·공허 단언을 강한 값 단언으로 재작성 (목표 80% · 최대 3회)"
-                      onClick={() => strengthenAssertions(80, 3)}
-                    >
-                      약함→강함 강화
-                    </Button>
+                    {/* 강화는 분석 결과가 있고, 강화할 약함·공허가 있을 때만 노출 */}
+                    {assertionReport && assertionReport.weak + assertionReport.vacuous > 0 && (
+                      <Button
+                        variant="secondary"
+                        icon={<SparkleIcon width={14} height={14} />}
+                        loading={strengthening}
+                        loadingText="강화 중…"
+                        title="약한·공허 단언을 강한 값 단언으로 재작성 (목표 80% · 최대 3회)"
+                        onClick={() => strengthenAssertions(80, 3)}
+                      >
+                        약함→강함 강화
+                      </Button>
+                    )}
                   </div>
                 </div>
                 {assertionReport ? (
@@ -445,7 +448,7 @@ function TestRow({
         <div
           className={[
             'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1',
-            hasSpec ? 'bg-ok/15 text-ok ring-ok/30' : 'bg-brand/15 text-brand-soft ring-brand/30'
+            hasSpec ? 'bg-ok/15 text-ok ring-ok/30' : 'bg-surface-2 text-muted ring-border'
           ].join(' ')}
         >
           <FlaskIcon />
