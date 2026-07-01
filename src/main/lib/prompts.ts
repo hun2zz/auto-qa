@@ -343,26 +343,33 @@ export function testsPrompt(args: {
   specOutPath: string
   baseURL: string
 }): string {
-  return `너는 Playwright 테스트 자동화 전문가다. 승인된 합격기준 체크리스트를 결정적인 Playwright 테스트 코드로 변환한다.
+  return `너는 Playwright 테스트 자동화 전문가다. 이 체크리스트는 '하나의 개발 범위(기능)'의 합격기준이다. 이걸 **그 기능이 범위대로 완료·작동하는지 검증하는 '흐름(flow) 단위 인수 테스트'**로 변환한다. (항목별 파편 테스트 ❌ — 흐름 단위 시나리오 ⭕)
 
 # 입력
-- 체크리스트: ${args.checklistPath}
+- 체크리스트: ${args.checklistPath}  (이 파일 = 이 기능 하나의 합격기준 모음)
 - 테스트 baseURL: ${args.baseURL}
 
-# 작업
-1. 체크리스트의 각 Given/When/Then 항목을 하나의 test() 로 변환한다.
-2. 셀렉터는 체크리스트 힌트를 출발점으로 하되, 프로젝트 코드를 실제로 Read/Grep 해서 정확한 셀렉터(getByRole / getByTestId / getByText)를 확정한다. 추측 셀렉터 금지.
-3. assertion 은 '관찰 가능한 결과'를 결정적으로 검증한다(URL 이동, 텍스트 노출, 요소 존재/비활성화 등). AI 판단이 아니라 expect() 로.
+# 핵심 원칙 — 흐름 단위로 두껍게
+- 체크리스트 항목 하나하나를 개별 test() 로 쪼개지 마라. 대신 **이 기능의 '사용자 흐름'을 파악**해, test.describe('<기능 이름>') 안에 **시나리오 test() 3~6개**로 묶는다.
+- 시나리오 구성(있는 것만):
+  1) **정상 흐름(해피패스)**: 시작→입력→실행→결과→후속상태 까지 '한 test 안에서 끝까지' 이어서 진행하고, 단계마다 강한 값 단언.
+  2) **핵심 예외**: 검증 에러 / 빈 상태 / 경계값.
+  3) **권한·인증**: 로그인 필요/거부 등 (해당 시).
+- 체크리스트의 모든 Given/When/Then 항목은 이 시나리오들의 단계·단언으로 **빠짐없이 커버**돼야 한다(단, 1:1 test 로 나열하지 말고 흐름에 녹여라).
 
-# 출력 (반드시 이 파일을 Write 로 생성)
+# 셀렉터·단언
+- 셀렉터는 체크리스트 힌트를 출발점으로, 프로젝트 코드를 Read/Grep 해서 확정한다(getByRole/getByTestId/getByText). 추측 금지. 여러 개 매칭되면 { exact:true } 나 더 좁은 셀렉터로 유일하게.
+- 단언은 '진짜 값/상태'를 검증한다: toHaveText/toHaveURL/toHaveValue/toHaveCount 등. 단순 toBeVisible 로 끝내지 말고 흐름의 각 단계 결과를 값으로 확인.
+
+# 출력 (반드시 이 파일을 Write)
 경로: ${args.specOutPath}
-- '@playwright/test' 사용, TypeScript.
-- import { test, expect } from '@playwright/test'
-- 각 test 제목은 체크리스트 항목과 1:1 대응되게.
-- baseURL 은 playwright.config 에서 주입되므로 page.goto('/path') 처럼 상대경로 사용.
+- import { test, expect } from '@playwright/test'  (TypeScript)
+- test.describe('<이 기능/flow 이름>') 로 감싸고, 그 안에 시나리오 test() 들.
+- test 제목은 시나리오(예: '정상 발주 → 재고 차감', '재고 부족 시 거부')로. 체크리스트 항목명 그대로 나열 금지.
+- page.goto('/path') 상대경로(baseURL 주입됨).
 
 # 규칙
-- 불필요한 wait/sleep 금지. Playwright auto-waiting + web-first assertion(expect(locator).toBeVisible() 등) 사용.
-- 셀렉터를 코드에서 확정하지 못한 항목은 test.fixme() 로 두고 주석에 사유를 남긴다(거짓 통과 방지).
-- 파일만 쓰고, result 에는 생성한 test 개수와 fixme 개수만 요약.`
+- 불필요한 wait/sleep 금지. auto-waiting + web-first assertion 사용.
+- 셀렉터/값을 코드에서 확정 못 한 시나리오는 test.fixme() + 사유 주석(거짓 통과 방지).
+- 파일만 쓰고, result 에는 만든 시나리오 수와 fixme 수만 요약.`
 }
