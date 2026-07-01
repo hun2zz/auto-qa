@@ -599,7 +599,17 @@ export async function generateTests(
 
   const res = await runClaude({
     projectPath,
-    prompt: rules + testsPrompt({ checklistId, checklistPath, specOutPath, baseURL }),
+    // 체크리스트 내용을 프롬프트에 직접 주입 → AI 가 체크리스트를 다시 Read 하지 않아 탐색 턴이 준다.
+    prompt:
+      rules +
+      testsPrompt({
+        checklistId,
+        checklistPath,
+        checklistTitle: checklist.title,
+        checklistContent: checklist.markdown,
+        specOutPath,
+        baseURL
+      }),
     allowedTools: ['Read', 'Grep', 'Glob', 'Write'],
     phase: 'tests',
     onProgress
@@ -669,9 +679,10 @@ export async function generateAllTests(
     onProgress({ phase: 'tests', message: '생성할 대상이 없습니다 (승인됐고 spec 없는 체크리스트 없음).' })
     return all
   }
-  onProgress({ phase: 'tests', message: `${targets.length}개 테스트 생성 (동시 4개)` })
+  const CONCURRENCY = 6
+  onProgress({ phase: 'tests', message: `${targets.length}개 테스트 생성 (동시 ${CONCURRENCY}개)` })
   let done = 0
-  await mapLimit(targets, 4, async (c) => {
+  await mapLimit(targets, CONCURRENCY, async (c) => {
     try {
       await generateTests(projectPath, c.id, baseURL, onProgress)
     } catch (e) {
