@@ -222,7 +222,7 @@ export function registerIpc(): void {
   })
 
   // self-healing
-  ipcMain.handle(IPC.healAndRerun, (e, projectPath: string) =>
-    healAndRerun(projectPath, progressSender(e))
+  ipcMain.handle(IPC.healAndRerun, (e, projectPath: string, only?: string[]) =>
+    healAndRerun(projectPath, progressSender(e), only)
   )
 }

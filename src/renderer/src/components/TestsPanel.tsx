@@ -250,16 +250,47 @@ function TabButton({
 function TestFilesCard({ files, title }: { files: TestFile[]; title?: string }): JSX.Element {
   const totalTests = files.reduce((s, f) => s + f.tests, 0)
   const totalFixmes = files.reduce((s, f) => s + f.fixmes, 0)
+  const runTests = useStore((s) => s.runTests)
+  const running = useStore((s) => !!s.busyKeys['runTests'])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const toggle = (name: string): void =>
+    setSelected((prev) => {
+      const n = new Set(prev)
+      n.has(name) ? n.delete(name) : n.add(name)
+      return n
+    })
+  const allSelected = files.length > 0 && files.every((f) => selected.has(f.name))
+  const toggleAll = (): void => setSelected(allSelected ? new Set() : new Set(files.map((f) => f.name)))
+  const runSelected = (): void => {
+    if (selected.size) {
+      void runTests([...selected])
+      setSelected(new Set())
+    }
+  }
+
   return (
     <article className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-        <div>
-          <h3 className="text-sm font-medium text-text">
-            {title ?? '생성된 테스트 파일'} ({files.length})
-          </h3>
-          <p className="mt-0.5 text-[11px] text-muted">.qa/tests 에 실제 생성된 spec 파일.</p>
-        </div>
-        <div className="flex items-center gap-1.5">
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={toggleAll}
+            className="h-3.5 w-3.5 cursor-pointer accent-brand"
+          />
+          <span>
+            <span className="text-sm font-medium text-text">
+              {title ?? '생성된 테스트 파일'} ({files.length})
+            </span>
+            <span className="mt-0.5 block text-[11px] text-muted">.qa/tests 의 실제 spec 파일.</span>
+          </span>
+        </label>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <Button variant="secondary" loading={running} loadingText="실행 중…" onClick={runSelected}>
+              선택 실행 ({selected.size})
+            </Button>
+          )}
           <Badge tone="ok">테스트 {totalTests}</Badge>
           {totalFixmes > 0 && <Badge tone="muted">비활성 {totalFixmes}</Badge>}
         </div>
@@ -268,16 +299,22 @@ function TestFilesCard({ files, title }: { files: TestFile[]; title?: string }):
         {files.map((f) => (
           <li
             key={f.name}
-            className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2/40"
+            className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2/40 ${selected.has(f.name) ? 'bg-brand/5 ring-1 ring-brand/20' : ''}`}
           >
-            <div className="flex min-w-0 items-center gap-2">
+            <label className="flex min-w-0 cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={selected.has(f.name)}
+                onChange={() => toggle(f.name)}
+                className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-brand"
+              />
               <Badge tone={f.kind === 'code' ? 'warn' : 'muted'}>
                 {f.kind === 'code' ? '코드' : '요구사항'}
               </Badge>
               <span className="truncate font-mono text-[12px] text-text" title={f.name}>
                 {f.name}
               </span>
-            </div>
+            </label>
             <span className="shrink-0 text-[11px] text-muted">
               테스트 {f.tests}
               {f.fixmes > 0 ? ` · 비활성 ${f.fixmes}` : ''}

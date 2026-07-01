@@ -133,10 +133,23 @@ async function doRun(
  */
 export async function healAndRerun(
   projectPath: string,
-  onProgress: (e: ProgressEvent) => void
+  onProgress: (e: ProgressEvent) => void,
+  only?: string[]
 ): Promise<HealResult> {
   let server: DevServerHandle | null = null
   const notes: string[] = []
+  const targets = only && only.length ? only : undefined
+  const partial = !!targets
+  // 부분 힐링이면 결과를 이전 리포트에 병합해 나머지 테스트 결과를 보존한다.
+  const finalize = async (report: RunReport): Promise<RunReport> => {
+    let out = report
+    if (partial && !(report.fatalError && report.total === 0)) {
+      const prev = await getLastReport(projectPath)
+      if (prev && prev.results.length) out = mergeReports(prev, report)
+    }
+    await persist(projectPath, out)
+    return out
+  }
   try {
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
@@ -145,19 +158,19 @@ export async function healAndRerun(
     // 로그인 URL 도 실제 서버 포트로 맞춤 (3000 점유 시 3001 등으로 떠도 로그인 성공)
     if (extraEnv.QA_LOGIN_URL) extraEnv.QA_LOGIN_URL = rewriteHost(extraEnv.QA_LOGIN_URL, server.baseURL)
 
-    // 1차 실행
-    let report = await runAndStamp(projectPath, { extraEnv, onProgress })
+    // 1차 실행 (부분 힐링이면 선택 대상만)
+    let report = await runAndStamp(projectPath, { extraEnv, onProgress, targets })
     const failedFiles = groupFailingFiles(report.results)
 
     if (failedFiles.size === 0) {
-      await persist(projectPath, report)
+      const merged = await finalize(report)
       return {
         attempted: 0,
         healed: 0,
         realBugs: 0,
-        report,
+        report: merged,
         changes: [],
-        notes: ['실패한 테스트가 없습니다.']
+        notes: ['선택한 범위에 실패한 테스트가 없습니다.']
       }
     }
 
@@ -220,9 +233,9 @@ export async function healAndRerun(
     // 3. 드리프트 수정이 있었으면 재실행 (회귀 spec 은 안 고쳤으니 그대로 실패 유지)
     if (healed > 0) {
       onProgress({ phase: 'playwright', message: '드리프트 수정본 재실행 중…' })
-      report = await runAndStamp(projectPath, { extraEnv, onProgress })
+      report = await runAndStamp(projectPath, { extraEnv, onProgress, targets })
     }
-    await persist(projectPath, report)
+    report = await finalize(report)
     onProgress({
       phase: 'playwright',
       message: `치유 ${healed} · 회귀의심 ${realBugs} · 통과 ${report.passed}/실패 ${report.failed}`,

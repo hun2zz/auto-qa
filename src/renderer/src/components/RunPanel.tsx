@@ -291,10 +291,18 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
   const shownKeys = shown.map(rowKey)
   const allSelected = shownKeys.length > 0 && shownKeys.every((k) => selected.has(k))
   const toggleAll = (): void => setSelected(allSelected ? new Set() : new Set(shownKeys))
+  const healAndRerun = useStore((s) => s.healAndRerun)
+  const healing = useStore((s) => !!s.busyKeys['healAndRerun'])
+  const selectedTargets = [...selected].map(keyToTarget).filter(Boolean)
   const runSelected = (): void => {
-    const targets = [...selected].map(keyToTarget).filter(Boolean)
-    if (targets.length) {
-      void runTests(targets)
+    if (selectedTargets.length) {
+      void runTests(selectedTargets)
+      setSelected(new Set())
+    }
+  }
+  const healSelected = (): void => {
+    if (selectedTargets.length) {
+      void healAndRerun(selectedTargets)
       setSelected(new Set())
     }
   }
@@ -370,6 +378,16 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
                 <span className="text-[11px] text-muted">{selected.size}개 선택</span>
                 <Button variant="secondary" loading={running} loadingText="실행 중…" onClick={runSelected}>
                   선택 실행
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={<SparkleIcon width={13} height={13} />}
+                  loading={healing}
+                  loadingText="힐링 중…"
+                  title="선택한 테스트만 self-healing (드리프트/셀렉터 수정 후 재실행)"
+                  onClick={healSelected}
+                >
+                  선택 힐링
                 </Button>
                 <button
                   type="button"

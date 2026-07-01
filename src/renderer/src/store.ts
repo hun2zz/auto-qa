@@ -135,7 +135,7 @@ interface AppState {
   loadAuthStatus: () => Promise<void>
   setAuthSecret: (password: string) => Promise<void>
   generateAuthSetup: (config?: QaConfig) => Promise<void>
-  healAndRerun: () => Promise<void>
+  healAndRerun: (only?: string[]) => Promise<void>
   runNegativeControl: () => Promise<void>
 }
 
@@ -708,11 +708,11 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    healAndRerun: async () => {
+    healAndRerun: async (only) => {
       const { project } = get()
       if (!project) return
       await withBusy('healAndRerun', async () => {
-        const result = await window.api.healAndRerun(project.path)
+        const result = await window.api.healAndRerun(project.path, only)
         set({ lastReport: result.report, lastHeal: result })
         if (result.healed > 0) {
           get().pushToast('success', `AI가 ${result.healed}개 수정 후 재실행했습니다`)

@@ -517,7 +517,7 @@ export interface AutoQaApi {
   generateAuthSetup(projectPath: string): Promise<AuthStatus>
 
   /** [AI+결정적] 실패한 테스트의 셀렉터를 AI 가 고치고 재실행 (self-healing) */
-  healAndRerun(projectPath: string): Promise<HealResult>
+  healAndRerun(projectPath: string, only?: string[]): Promise<HealResult>
 
   /** 진행 상황 구독. 반환된 함수 호출 시 해제 */
   onProgress(cb: (e: ProgressEvent) => void): () => void

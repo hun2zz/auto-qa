@@ -56,7 +56,7 @@ const api: AutoQaApi = {
   setAuthSecret: (p, password) => ipcRenderer.invoke(IPC.setAuthSecret, p, password),
   generateAuthSetup: (p) => ipcRenderer.invoke(IPC.generateAuthSetup, p),
 
-  healAndRerun: (p) => ipcRenderer.invoke(IPC.healAndRerun, p),
+  healAndRerun: (p, only) => ipcRenderer.invoke(IPC.healAndRerun, p, only),
 
   onProgress: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, payload: ProgressEvent): void => cb(payload)
