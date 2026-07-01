@@ -120,7 +120,7 @@ interface AppState {
   evalResult: EvalResult | null
   runEval: () => Promise<void>
 
-  runTests: (only?: string) => Promise<void>
+  runTests: (only?: string | string[]) => Promise<void>
   runFailedTests: () => Promise<void>
   rerunTest: (file: string | undefined, title: string, line?: number) => Promise<void>
   applyRunResult: (report: RunReport, isRerun?: boolean) => void

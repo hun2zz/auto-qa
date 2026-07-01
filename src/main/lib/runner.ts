@@ -42,13 +42,15 @@ export function cancelRun(projectPath: string): void {
   activeRuns.get(projectPath)?.abort()
 }
 
-/** [결정적] dev 서버 구동 → Playwright 실행 → 리포트 저장. AI 미사용. */
+/** [결정적] dev 서버 구동 → Playwright 실행 → 리포트 저장. AI 미사용.
+ *  only: 단일 spec(문자열) 또는 트랙 실행용 spec 목록(배열). 생략 시 전체 실행. */
 export async function runTests(
   projectPath: string,
   onProgress: (e: ProgressEvent) => void,
-  only?: string
+  only?: string | string[]
 ): Promise<RunReport> {
-  return doRun(projectPath, onProgress, only ? [only] : undefined)
+  const targets = only == null ? undefined : Array.isArray(only) ? only : [only]
+  return doRun(projectPath, onProgress, targets && targets.length ? targets : undefined)
 }
 
 /** 직전 리포트의 실패/타임아웃 테스트만 재실행. file:line 정밀 타깃(없으면 파일 단위). */

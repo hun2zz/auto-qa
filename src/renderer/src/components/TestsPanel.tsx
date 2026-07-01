@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import { useState, type JSX } from 'react'
 import type {
   AssertionReport,
   AssertionStrength,
@@ -30,17 +30,19 @@ export function TestsPanel(): JSX.Element {
   const evaluating = useStore((s) => !!s.busyKeys['runEval'])
   const evalResult = useStore((s) => s.evalResult)
   const testFiles = useStore((s) => s.testFiles)
+  const [tab, setTab] = useState<'scope' | 'code'>('scope')
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
-
   const hasPending = approved.some((c) => !c.specPath)
+  const scopeFiles = testFiles.filter((f) => f.kind === 'checklist')
+  const codeFiles = testFiles.filter((f) => f.kind === 'code')
 
   return (
     <>
       <PanelHeader
         step={3}
         title="테스트 생성"
-        desc="① 요구사항 기준(정확성) · ② 코드 기준(회귀·커버리지, 요구사항에 없는 것 포함) 두 종류를 만듭니다."
+        desc="개발범위 완료 테스트(요구사항·흐름)와 코드 정밀 테스트(회귀·커버리지)를 분리해 만들고 봅니다."
         action={
           <div className="flex items-center gap-2">
             <Button
@@ -77,30 +79,11 @@ export function TestsPanel(): JSX.Element {
             >
               생성 채점
             </Button>
-            <Button
-              variant="secondary"
-              icon={<FlaskIcon width={14} height={14} />}
-              loading={generatingCode}
-              loadingText="생성 중…"
-              onClick={() => generateCodeTests()}
-            >
-              코드 기준 테스트 생성
-            </Button>
-            {hasPending && (
-              <Button
-                variant="primary"
-                icon={<SparkleIcon />}
-                loading={generatingAll}
-                loadingText="생성 중…"
-                onClick={() => generateAllTests()}
-              >
-                전체 테스트 생성
-              </Button>
-            )}
           </div>
         }
       />
       <PanelBody>
+        {/* 공통 분석 결과 (두 트랙 전체 대상) */}
         {evalResult && (
           <div className="mb-5">
             <EvalReport result={evalResult} />
@@ -116,68 +99,165 @@ export function TestsPanel(): JSX.Element {
             <AssertionStrengthReport report={assertionReport} />
           </div>
         )}
-        {testFiles.length > 0 && (
-          <div className="mb-5">
-            <TestFilesCard files={testFiles} />
+
+        {/* 트랙 탭 */}
+        <div className="mb-5 flex gap-1 rounded-xl border border-border bg-surface-2/40 p-1">
+          <TabButton
+            active={tab === 'scope'}
+            onClick={() => setTab('scope')}
+            label="개발범위 완료 테스트"
+            hint="요구사항·흐름"
+            count={scopeFiles.length}
+          />
+          <TabButton
+            active={tab === 'code'}
+            onClick={() => setTab('code')}
+            label="코드 정밀 테스트"
+            hint="회귀·커버리지"
+            count={codeFiles.length}
+          />
+        </div>
+
+        {tab === 'scope' ? (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12px] leading-relaxed text-muted">
+                요구사항→체크리스트→테스트. "이 기능이 개발 범위대로 완료·작동하나"를 흐름 단위로 검증합니다.
+              </p>
+              {hasPending && (
+                <Button
+                  variant="primary"
+                  icon={<SparkleIcon />}
+                  loading={generatingAll}
+                  loadingText="생성 중…"
+                  onClick={() => generateAllTests()}
+                >
+                  전체 테스트 생성
+                </Button>
+              )}
+            </div>
+            {scopeFiles.length > 0 && (
+              <TestFilesCard files={scopeFiles} title="개발범위 테스트 파일" />
+            )}
+            {checklists.length === 0 ? (
+              <EmptyState
+                icon={<FlaskIcon width={26} height={26} />}
+                title="승인된 체크리스트가 없습니다"
+                desc="1·2단계에서 요구사항을 올리고 체크리스트를 승인하면 여기서 개발범위 완료 테스트를 만듭니다."
+              />
+            ) : (
+              <div className="space-y-6">
+                {approved.length > 0 && (
+                  <div className="space-y-3">
+                    {approved.map((c) => (
+                      <TestRow key={c.id} checklist={c} />
+                    ))}
+                  </div>
+                )}
+                {drafts.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                      승인 대기 ({drafts.length})
+                    </p>
+                    <div className="space-y-2">
+                      {drafts.map((c) => (
+                        <div
+                          key={c.id}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-surface/40 px-5 py-3.5"
+                        >
+                          <div className="min-w-0">
+                            <h3 className="truncate text-sm font-medium text-text/70">{c.title}</h3>
+                            <p className="truncate text-[11px] text-muted">{c.sourceRequirement}</p>
+                          </div>
+                          <span className="shrink-0 text-[11px] text-warn">
+                            먼저 2단계에서 승인이 필요합니다
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12px] leading-relaxed text-muted">
+                코드를 직접 분석한 회귀·커버리지 테스트. 요구사항에 없는 동작도 포함하며, 상세할수록 좋습니다.
+              </p>
+              <Button
+                variant="primary"
+                icon={<FlaskIcon width={14} height={14} />}
+                loading={generatingCode}
+                loadingText="생성 중…"
+                onClick={() => generateCodeTests()}
+              >
+                코드 기준 테스트 생성
+              </Button>
+            </div>
+            {codeFiles.length > 0 ? (
+              <TestFilesCard files={codeFiles} title="코드 정밀 테스트 파일" />
+            ) : (
+              <EmptyState
+                icon={<FlaskIcon width={26} height={26} />}
+                title="코드 정밀 테스트가 없습니다"
+                desc="'코드 기준 테스트 생성'을 누르면 코드만으로 회귀·커버리지 테스트를 만듭니다 (요구사항 불필요)."
+              />
+            )}
           </div>
         )}
-        {checklists.length === 0 && testFiles.length === 0 ? (
-          <EmptyState
-            icon={<FlaskIcon width={26} height={26} />}
-            title="아직 생성된 테스트가 없습니다"
-            desc="요구사항이 없으면 위 '코드 기준 테스트 생성'으로 코드만으로 만들 수 있고, 요구사항이 있으면 2단계에서 체크리스트를 승인해 만듭니다."
-          />
-        ) : checklists.length > 0 ? (
-          <div className="space-y-6">
-            {approved.length > 0 && (
-              <div className="space-y-3">
-                {approved.map((c) => (
-                  <TestRow key={c.id} checklist={c} />
-                ))}
-              </div>
-            )}
-
-            {drafts.length > 0 && (
-              <div>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                  승인 대기 ({drafts.length})
-                </p>
-                <div className="space-y-2">
-                  {drafts.map((c) => (
-                    <div
-                      key={c.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-surface/40 px-5 py-3.5"
-                    >
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-medium text-text/70">{c.title}</h3>
-                        <p className="truncate text-[11px] text-muted">{c.sourceRequirement}</p>
-                      </div>
-                      <span className="shrink-0 text-[11px] text-warn">
-                        먼저 2단계에서 승인이 필요합니다
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : null}
       </PanelBody>
     </>
   )
 }
 
-function TestFilesCard({ files }: { files: TestFile[] }): JSX.Element {
+function TabButton({
+  active,
+  onClick,
+  label,
+  hint,
+  count
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  hint: string
+  count: number
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'flex flex-1 flex-col items-start gap-0.5 rounded-lg px-4 py-2.5 text-left transition-colors',
+        active ? 'bg-surface text-text ring-1 ring-border' : 'text-muted hover:text-text'
+      ].join(' ')}
+    >
+      <span className="flex items-center gap-1.5 text-sm font-medium">
+        {label}
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-brand/20 text-brand-soft' : 'bg-surface-2 text-muted'}`}
+        >
+          {count}
+        </span>
+      </span>
+      <span className="text-[10.5px] text-muted">{hint}</span>
+    </button>
+  )
+}
+
+function TestFilesCard({ files, title }: { files: TestFile[]; title?: string }): JSX.Element {
   const totalTests = files.reduce((s, f) => s + f.tests, 0)
   const totalFixmes = files.reduce((s, f) => s + f.fixmes, 0)
   return (
     <article className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
-          <h3 className="text-sm font-medium text-text">생성된 테스트 파일 ({files.length})</h3>
-          <p className="mt-0.5 text-[11px] text-muted">
-            .qa/tests 에 실제 생성된 spec. 코드 기준 테스트는 체크리스트 없이도 여기 표시됩니다.
-          </p>
+          <h3 className="text-sm font-medium text-text">
+            {title ?? '생성된 테스트 파일'} ({files.length})
+          </h3>
+          <p className="mt-0.5 text-[11px] text-muted">.qa/tests 에 실제 생성된 spec 파일.</p>
         </div>
         <div className="flex items-center gap-1.5">
           <Badge tone="ok">테스트 {totalTests}</Badge>

@@ -480,8 +480,8 @@ export interface AutoQaApi {
   /** 생성된 테스트의 셀렉터를 인덱스로 검증 (지어낸 것 탐지) */
   validateSelectors(projectPath: string): Promise<SelectorValidation>
 
-  /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only 지정 시 해당 spec 만 */
-  runTests(projectPath: string, only?: string): Promise<RunReport>
+  /** [결정적] dev 서버 구동 → playwright 실행 → 리포트. only=단일 spec 또는 트랙 spec 목록 */
+  runTests(projectPath: string, only?: string | string[]): Promise<RunReport>
   /** 직전 리포트에서 실패/타임아웃한 테스트만 재실행 (file:line 정밀 타깃, 없으면 파일 단위) */
   runFailedTests(projectPath: string): Promise<RunReport>
   /** 진행 중인 runTests 를 중단 (Playwright 종료 + dev 서버 정리) */

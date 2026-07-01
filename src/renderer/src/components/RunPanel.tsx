@@ -15,9 +15,22 @@ export function RunPanel(): JSX.Element {
   const testFiles = useStore((s) => s.testFiles)
   // 실제 .qa/tests 의 spec 이 하나라도 있으면 실행 가능 (코드 기준 테스트는 체크리스트가 없음)
   const hasSpecs = testFiles.length > 0 || checklists.some((c) => c.specPath)
+  const scopeNames = testFiles.filter((f) => f.kind === 'checklist').map((f) => f.name)
+  const codeNames = testFiles.filter((f) => f.kind === 'code').map((f) => f.name)
+  const hasBothTracks = scopeNames.length > 0 && codeNames.length > 0
 
   const runBtn = (
     <div className="flex items-center gap-2">
+      {hasBothTracks && !running && (
+        <>
+          <Button variant="secondary" title="개발범위 완료 테스트만 실행" onClick={() => void runTests(scopeNames)}>
+            개발범위만
+          </Button>
+          <Button variant="secondary" title="코드 정밀 테스트만 실행" onClick={() => void runTests(codeNames)}>
+            코드만
+          </Button>
+        </>
+      )}
       <Button
         size="lg"
         variant="primary"
@@ -28,7 +41,7 @@ export function RunPanel(): JSX.Element {
         title={hasSpecs ? undefined : '먼저 테스트를 생성하세요'}
         onClick={() => void runTests()}
       >
-        QA 실행
+        {hasBothTracks ? '전체 실행' : 'QA 실행'}
       </Button>
       {running && (
         <Button size="lg" variant="secondary" onClick={() => void cancelRun()}>
