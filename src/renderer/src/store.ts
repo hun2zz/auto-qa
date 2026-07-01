@@ -108,6 +108,7 @@ interface AppState {
   approveAllChecklists: () => Promise<void>
 
   generateTests: (checklistId: string) => Promise<void>
+  generateTestsForIds: (ids: string[]) => Promise<void>
   generateAllTests: () => Promise<void>
   generateCodeTests: () => Promise<void>
   testFiles: TestFile[]
@@ -482,6 +483,20 @@ export const useStore = create<AppState>((set, get) => {
         await get().loadTestFiles()
         get().pushToast('success', '테스트 일괄 생성 완료')
       })
+    },
+
+    generateTestsForIds: async (ids) => {
+      const { project } = get()
+      if (!project || ids.length === 0) return
+      // 선택한 체크리스트만 순차 생성 (각 행별 busy 표시)
+      for (const id of ids) {
+        await withBusy(`tests:${id}`, async () => {
+          const updated = await window.api.generateTests(project.path, id)
+          set((s) => ({ checklists: s.checklists.map((c) => (c.id === id ? updated : c)) }))
+        }).catch(() => {})
+      }
+      await get().loadTestFiles()
+      get().pushToast('success', `선택한 ${ids.length}개 테스트 생성 완료`)
     },
 
     generateCodeTests: async () => {

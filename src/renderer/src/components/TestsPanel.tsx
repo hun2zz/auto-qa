@@ -30,7 +30,15 @@ export function TestsPanel(): JSX.Element {
   const evaluating = useStore((s) => !!s.busyKeys['runEval'])
   const evalResult = useStore((s) => s.evalResult)
   const testFiles = useStore((s) => s.testFiles)
+  const generateTestsForIds = useStore((s) => s.generateTestsForIds)
   const [tab, setTab] = useState<'scope' | 'code'>('scope')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const toggleId = (id: string): void =>
+    setSelectedIds((prev) => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
   const hasPending = approved.some((c) => !c.specPath)
@@ -124,17 +132,31 @@ export function TestsPanel(): JSX.Element {
               <p className="text-[12px] leading-relaxed text-muted">
                 요구사항→체크리스트→테스트. "이 기능이 개발 범위대로 완료·작동하나"를 흐름 단위로 검증합니다.
               </p>
-              {hasPending && (
-                <Button
-                  variant="primary"
-                  icon={<SparkleIcon />}
-                  loading={generatingAll}
-                  loadingText="생성 중…"
-                  onClick={() => generateAllTests()}
-                >
-                  전체 테스트 생성
-                </Button>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                {selectedIds.size > 0 && (
+                  <Button
+                    variant="secondary"
+                    icon={<SparkleIcon width={14} height={14} />}
+                    onClick={() => {
+                      void generateTestsForIds([...selectedIds])
+                      setSelectedIds(new Set())
+                    }}
+                  >
+                    선택 생성 ({selectedIds.size})
+                  </Button>
+                )}
+                {hasPending && (
+                  <Button
+                    variant="primary"
+                    icon={<SparkleIcon />}
+                    loading={generatingAll}
+                    loadingText="생성 중…"
+                    onClick={() => generateAllTests()}
+                  >
+                    전체 테스트 생성
+                  </Button>
+                )}
+              </div>
             </div>
             {scopeFiles.length > 0 && (
               <TestFilesCard files={scopeFiles} title="개발범위 테스트 파일" />
@@ -150,7 +172,12 @@ export function TestsPanel(): JSX.Element {
                 {approved.length > 0 && (
                   <div className="space-y-3">
                     {approved.map((c) => (
-                      <TestRow key={c.id} checklist={c} />
+                      <TestRow
+                        key={c.id}
+                        checklist={c}
+                        checked={selectedIds.has(c.id)}
+                        onToggle={() => toggleId(c.id)}
+                      />
                     ))}
                   </div>
                 )}
@@ -326,7 +353,15 @@ function TestFilesCard({ files, title }: { files: TestFile[]; title?: string }):
   )
 }
 
-function TestRow({ checklist }: { checklist: Checklist }): JSX.Element {
+function TestRow({
+  checklist,
+  checked,
+  onToggle
+}: {
+  checklist: Checklist
+  checked?: boolean
+  onToggle?: () => void
+}): JSX.Element {
   const generateTests = useStore((s) => s.generateTests)
   const runTests = useStore((s) => s.runTests)
   const generating = useStore((s) => !!s.busyKeys[`tests:${checklist.id}`])
@@ -337,10 +372,18 @@ function TestRow({ checklist }: { checklist: Checklist }): JSX.Element {
     <div
       className={[
         'flex items-center justify-between gap-4 rounded-xl border bg-surface p-5 transition-colors',
-        hasSpec ? 'border-ok/40 ring-1 ring-ok/15' : 'border-border'
+        checked ? 'border-brand/50 ring-1 ring-brand/20' : hasSpec ? 'border-ok/40 ring-1 ring-ok/15' : 'border-border'
       ].join(' ')}
     >
       <div className="flex min-w-0 items-center gap-3">
+        {onToggle && (
+          <input
+            type="checkbox"
+            checked={!!checked}
+            onChange={onToggle}
+            className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-brand"
+          />
+        )}
         <div
           className={[
             'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1',
