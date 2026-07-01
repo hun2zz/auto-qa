@@ -273,6 +273,32 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
   }
   const passRate = stat.total > 0 ? Math.round((stat.passed / stat.total) * 100) : 0
 
+  // 체크박스 다중 선택 → 선택한 테스트만 실행 (전체 실행 대신 특정만 재테스트)
+  const runTests = useStore((s) => s.runTests)
+  const running = useStore((s) => !!s.busyKeys['runTests'])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const rowKey = (r: TestResult): string => `${r.file ?? ''}\u0001${r.title}\u0001${r.line ?? ''}`
+  const keyToTarget = (k: string): string => {
+    const [f, , l] = k.split('\u0001')
+    return l ? `${f}:${l}` : f
+  }
+  const toggle = (k: string): void =>
+    setSelected((prev) => {
+      const n = new Set(prev)
+      n.has(k) ? n.delete(k) : n.add(k)
+      return n
+    })
+  const shownKeys = shown.map(rowKey)
+  const allSelected = shownKeys.length > 0 && shownKeys.every((k) => selected.has(k))
+  const toggleAll = (): void => setSelected(allSelected ? new Set() : new Set(shownKeys))
+  const runSelected = (): void => {
+    const targets = [...selected].map(keyToTarget).filter(Boolean)
+    if (targets.length) {
+      void runTests(targets)
+      setSelected(new Set())
+    }
+  }
+
   return (
     <div className="space-y-6">
       {report.fatalError && (
@@ -326,15 +352,46 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
       {/* negative-control: 기대값 변형 검증 */}
       <NegativeControlBlock />
 
-      {/* 결과 목록 (선택 트랙) */}
+      {/* 결과 목록 (선택 트랙) + 체크박스 다중 선택 실행 */}
       {shown.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            테스트 결과 ({shown.length})
-          </p>
-          {shown.map((r, i) => (
-            <ResultRow key={`${r.title}-${i}`} result={r} />
-          ))}
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                className="h-3.5 w-3.5 cursor-pointer accent-brand"
+              />
+              테스트 결과 ({shown.length})
+            </label>
+            {selected.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted">{selected.size}개 선택</span>
+                <Button variant="secondary" loading={running} loadingText="실행 중…" onClick={runSelected}>
+                  선택 실행
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set())}
+                  className="text-[11px] text-muted hover:text-text"
+                >
+                  해제
+                </button>
+              </div>
+            )}
+          </div>
+          {shown.map((r, i) => {
+            const k = rowKey(r)
+            return (
+              <ResultRow
+                key={`${r.title}-${i}`}
+                result={r}
+                checked={selected.has(k)}
+                onToggle={() => toggle(k)}
+              />
+            )
+          })}
         </div>
       )}
     </div>
@@ -402,7 +459,15 @@ const STATUS_META: Record<TestStatus, { label: string; dot: string; text: string
   timedOut: { label: '시간초과', dot: 'bg-warn', text: 'text-warn' }
 }
 
-function ResultRow({ result }: { result: TestResult }): JSX.Element {
+function ResultRow({
+  result,
+  checked,
+  onToggle
+}: {
+  result: TestResult
+  checked?: boolean
+  onToggle?: () => void
+}): JSX.Element {
   const [open, setOpen] = useState(false)
   const meta = STATUS_META[result.status]
   const expandable = (result.status === 'failed' || result.status === 'timedOut') && !!result.error
@@ -416,12 +481,23 @@ function ResultRow({ result }: { result: TestResult }): JSX.Element {
     <div
       className={[
         'overflow-hidden rounded-xl border bg-surface transition-colors',
+        checked ? 'border-brand/50 ring-1 ring-brand/20' : '',
         result.status === 'failed' || result.status === 'timedOut'
           ? 'border-bad/30'
           : 'border-border'
       ].join(' ')}
     >
       <div className="flex items-center">
+        {onToggle && (
+          <label className="flex shrink-0 cursor-pointer items-center pl-3">
+            <input
+              type="checkbox"
+              checked={!!checked}
+              onChange={onToggle}
+              className="h-3.5 w-3.5 cursor-pointer accent-brand"
+            />
+          </label>
+        )}
         <button
           type="button"
           disabled={!expandable}
