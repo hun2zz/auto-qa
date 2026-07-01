@@ -10,7 +10,8 @@ import type {
   ProgressEvent,
   RunReport,
   SensitivitySpec,
-  TestResult
+  TestResult,
+  TestScope
 } from '@shared/types'
 import { getConfig, lastReportPath, qaDir, testsDir, writePlaywrightConfig } from './projectManager'
 import { startDevServer, type DevServerHandle } from './devServer'
@@ -274,8 +275,11 @@ function lineDiff(before: string, after: string): string {
  */
 export async function negativeControl(
   projectPath: string,
-  onProgress: (e: ProgressEvent) => void
+  onProgress: (e: ProgressEvent) => void,
+  scope: TestScope = 'all'
 ): Promise<NegativeControlReport> {
+  const inScope = (f: string): boolean =>
+    scope === 'all' ? true : scope === 'code' ? f.startsWith('code-') : !f.startsWith('code-')
   let server: DevServerHandle | null = null
   try {
     server = await bootDevServer(projectPath, onProgress)
@@ -291,7 +295,7 @@ export async function negativeControl(
     if (baseline.fatalError) return ncFail(baseline.fatalError)
     const passingFiles = [
       ...new Set(baseline.results.filter((r) => r.status === 'passed').map((r) => r.file))
-    ].filter((f): f is string => !!f)
+    ].filter((f): f is string => !!f && inScope(f))
 
     const specs: SensitivitySpec[] = []
     for (const file of passingFiles.slice(0, 8)) {

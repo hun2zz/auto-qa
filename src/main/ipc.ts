@@ -186,8 +186,8 @@ export function registerIpc(): void {
     runFailedTests(projectPath, progressSender(e))
   )
   ipcMain.handle(IPC.cancelRun, (_e, projectPath: string) => cancelRun(projectPath))
-  ipcMain.handle(IPC.negativeControl, (e, projectPath: string) =>
-    negativeControl(projectPath, progressSender(e))
+  ipcMain.handle(IPC.negativeControl, (e, projectPath: string, scope?: TestScope) =>
+    negativeControl(projectPath, progressSender(e), scope)
   )
 
   ipcMain.handle(

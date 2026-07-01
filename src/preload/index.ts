@@ -41,7 +41,7 @@ const api: AutoQaApi = {
   runTests: (p, only) => ipcRenderer.invoke(IPC.runTests, p, only),
   runFailedTests: (p) => ipcRenderer.invoke(IPC.runFailedTests, p),
   cancelRun: (p) => ipcRenderer.invoke(IPC.cancelRun, p),
-  negativeControl: (p) => ipcRenderer.invoke(IPC.negativeControl, p),
+  negativeControl: (p, scope) => ipcRenderer.invoke(IPC.negativeControl, p, scope),
   getLastReport: (p) => ipcRenderer.invoke(IPC.getLastReport, p),
 
   auditCoverage: (p, requirementName, kind) =>

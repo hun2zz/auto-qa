@@ -1,6 +1,8 @@
 import { useState, type JSX } from 'react'
-import type { HealResult, RunReport, TestResult, TestStatus } from '@shared/types'
+import type { HealResult, RunReport, TestResult, TestStatus, TestScope } from '@shared/types'
 import { useStore } from '../store'
+
+const SCOPE_LABEL: Record<TestScope, string> = { all: '전체', scope: '개발범위', code: '코드' }
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
 import { PlayIcon, AlertIcon, ChevronIcon, SparkleIcon } from './icons'
@@ -91,7 +93,7 @@ export function RunPanel(): JSX.Element {
   )
 }
 
-function NegativeControlBlock(): JSX.Element {
+function NegativeControlBlock({ scope }: { scope: TestScope }): JSX.Element {
   const run = useStore((s) => s.runNegativeControl)
   const busy = useStore((s) => !!s.busyKeys['negativeControl'])
   const report = useStore((s) => s.negativeControl)
@@ -101,13 +103,18 @@ function NegativeControlBlock(): JSX.Element {
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-text">기대값 변형 검증 (negative-control)</h3>
+          <h3 className="text-sm font-semibold text-text">
+            기대값 변형 검증 (negative-control)
+            <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
+              대상: {SCOPE_LABEL[scope]}
+            </span>
+          </h3>
           <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
             통과 테스트의 기대값을 일부러 틀리게 바꿔 재실행 → 빨간불이 떠야 '진짜 검증'.
             그래도 통과하면 알맹이 없는 테스트. (무거움 · 끝나면 원본 복원)
           </p>
         </div>
-        <Button variant="secondary" loading={busy} loadingText="검증 중… (무거움)" onClick={() => void run()}>
+        <Button variant="secondary" loading={busy} loadingText="검증 중… (무거움)" onClick={() => void run(scope)}>
           변형 검증 실행
         </Button>
       </div>
@@ -136,12 +143,22 @@ function NegativeControlBlock(): JSX.Element {
   )
 }
 
-function SelfHealing({ report }: { report: RunReport }): JSX.Element | null {
+function SelfHealing({ report, track }: { report: RunReport; track: TestScope }): JSX.Element | null {
   const healAndRerun = useStore((s) => s.healAndRerun)
   const healing = useStore((s) => !!s.busyKeys['healAndRerun'])
   const lastHeal = useStore((s) => s.lastHeal)
 
-  const canHeal = !report.fatalError && report.failed > 0
+  // 선택 트랙의 실패만 대상 (전체면 undefined → 전체 힐링)
+  const trackFails = report.results.filter(
+    (r) =>
+      (r.status === 'failed' || r.status === 'timedOut') &&
+      (track === 'all' || (track === 'code') === isCodeResult(r))
+  )
+  const targets =
+    track === 'all'
+      ? undefined
+      : trackFails.map((r) => (r.line ? `${r.file}:${r.line}` : r.file)).filter((x): x is string => !!x)
+  const canHeal = !report.fatalError && trackFails.length > 0
   if (!canHeal && !lastHeal) return null
 
   return (
@@ -151,6 +168,9 @@ function SelfHealing({ report }: { report: RunReport }): JSX.Element | null {
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
             <SparkleIcon width={15} height={15} className="text-brand-soft" />
             AI 자동 수정 (self-healing)
+            <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
+              대상: {SCOPE_LABEL[track]}
+            </span>
           </h3>
           <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
             셀렉터가 바뀌어 깨진 테스트를 AI가 고쳐서 다시 돌립니다. 실제 버그는 고치지 않고
@@ -163,9 +183,9 @@ function SelfHealing({ report }: { report: RunReport }): JSX.Element | null {
             icon={<SparkleIcon width={14} height={14} />}
             loading={healing}
             loadingText="수정 중…"
-            onClick={() => void healAndRerun()}
+            onClick={() => void healAndRerun(targets)}
           >
-            AI 자동 수정 &amp; 재실행 (self-healing)
+            AI 자동 수정 &amp; 재실행 ({trackFails.length})
           </Button>
         )}
       </div>
@@ -355,10 +375,10 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
       </div>
 
       {/* self-healing */}
-      <SelfHealing report={report} />
+      <SelfHealing report={report} track={track} />
 
       {/* negative-control: 기대값 변형 검증 */}
-      <NegativeControlBlock />
+      <NegativeControlBlock scope={track} />
 
       {/* 결과 목록 (선택 트랙) + 체크박스 다중 선택 실행 */}
       {shown.length > 0 && (

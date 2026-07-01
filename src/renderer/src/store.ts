@@ -138,7 +138,7 @@ interface AppState {
   setAuthSecret: (password: string) => Promise<void>
   generateAuthSetup: (config?: QaConfig) => Promise<void>
   healAndRerun: (only?: string[]) => Promise<void>
-  runNegativeControl: () => Promise<void>
+  runNegativeControl: (scope?: TestScope) => Promise<void>
 }
 
 let logSeq = 0
@@ -740,11 +740,11 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    runNegativeControl: async () => {
+    runNegativeControl: async (scope = 'all') => {
       const { project } = get()
       if (!project) return
       await withBusy('negativeControl', async () => {
-        const negativeControl = await window.api.negativeControl(project.path)
+        const negativeControl = await window.api.negativeControl(project.path, scope)
         set({ negativeControl })
         if (negativeControl.fatalError) {
           get().pushToast('error', `검증 실패: ${negativeControl.fatalError}`)

@@ -491,7 +491,7 @@ export interface AutoQaApi {
   /** 진행 중인 runTests 를 중단 (Playwright 종료 + dev 서버 정리) */
   cancelRun(projectPath: string): Promise<void>
   /** [무거움] 통과 테스트의 기대값을 틀리게 변형해 재실행 → 진짜 검증하는지(sensitive) 확인 */
-  negativeControl(projectPath: string): Promise<NegativeControlReport>
+  negativeControl(projectPath: string, scope?: TestScope): Promise<NegativeControlReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
 
   /** [AI] 요구사항 항목별 구현/테스트검증 여부 감사 → 완료율 + gap 리포트 (브라우저 불필요) */
