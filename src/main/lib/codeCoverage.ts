@@ -67,6 +67,9 @@ async function prepareCoverage(
   await ensureDeps(projectPath, onProgress)
   await writeHarness(projectPath)
 
+  // 생성된 spec 들이 클라 커버리지 fixture 를 쓰도록 import 를 임시 교체(복원 등록).
+  restorers.push(await patchSpecImports(projectPath))
+
   const sm = await patchSourceMaps(projectPath)
   if (sm.restore) restorers.push(sm.restore)
   const ts = await patchTsconfig(projectPath)
@@ -331,6 +334,55 @@ export default async function () {
 `,
     'utf8'
   )
+  // 클라이언트(브라우저) 커버리지 수집 fixture.
+  // ⚠️ collectClientCoverage 는 config.outputDir 가 없으면 저장을 통째로 스킵한다
+  //   (내부: cacheDir = outputDir ? join(outputDir,'.cache') : undefined).
+  //   그래서 반드시 playwright.config 의 nextcov.outputDir 와 '같은 값'을 넘겨야
+  //   finalize 가 그 .cache 를 읽어 클라 커버리지를 병합한다. (안 넘기면 컴포넌트 전부 0%)
+  // export * 로 devices/타입 등 원본 export 를 그대로 통과시키고 test 만 확장본으로 덮는다.
+  await fs.writeFile(
+    join(dir, 'fixtures.ts'),
+    `import { test as base } from '@playwright/test'
+import { collectClientCoverage } from 'nextcov/playwright'
+export * from '@playwright/test'
+export const test = base.extend<{ coverage: void }>({
+  coverage: [
+    async ({ page }, use, testInfo) => {
+      await collectClientCoverage(page, testInfo, use, { outputDir: '${COVERAGE_OUTPUT_DIR}' })
+    },
+    { scope: 'test', auto: true }
+  ]
+})
+`,
+    'utf8'
+  )
+}
+
+/** nextcov 리포트 출력 폴더 (config 의 outputDir 와 fixture 의 outputDir 가 반드시 일치해야 함) */
+const COVERAGE_OUTPUT_DIR = '.qa/coverage/report'
+
+/**
+ * .qa/tests/*.spec.ts 의 `from '@playwright/test'` 를 `from '../coverage/fixtures'` 로 바꿔
+ * 클라 커버리지 fixture(auto)가 모든 테스트에 붙게 한다. 반환된 restore 로 원복한다.
+ * 정규식 양방향(patch/restore)이라 이전 실행이 중간에 죽어 남은 패치도 스스로 원복된다.
+ */
+async function patchSpecImports(projectPath: string): Promise<() => Promise<void>> {
+  const dir = join(qaDir(projectPath), 'tests')
+  if (!existsSync(dir)) return async () => {}
+  const specs = (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts'))
+  const sub = async (from: RegExp, to: string): Promise<void> => {
+    await Promise.all(
+      specs.map(async (f) => {
+        const p = join(dir, f)
+        const s = await fs.readFile(p, 'utf8')
+        if (from.test(s)) await fs.writeFile(p, s.replace(from, to), 'utf8')
+      })
+    )
+  }
+  await sub(/from ['"]@playwright\/test['"]/g, "from '../coverage/fixtures'")
+  return async () => {
+    await sub(/from ['"]\.\.\/coverage\/fixtures['"]/g, "from '@playwright/test'")
+  }
 }
 
 interface PatchResult {
