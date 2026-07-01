@@ -67,8 +67,11 @@ async function prepareCoverage(
   await ensureDeps(projectPath, onProgress)
   await writeHarness(projectPath)
 
-  // 생성된 spec 들이 클라 커버리지 fixture 를 쓰도록 import 를 임시 교체(복원 등록).
-  restorers.push(await patchSpecImports(projectPath))
+  // spec import 교체는 measureOnce 에서 매 측정 직전에 수행(루프가 새로 만든 spec 도 포함되게).
+  // 여기서는 복원만 등록 — 정상/비정상 종료 모두 원본(@playwright/test)으로 되돌린다.
+  restorers.push(async () => {
+    await restoreSpecImports(projectPath)
+  })
 
   const sm = await patchSourceMaps(projectPath)
   if (sm.restore) restorers.push(sm.restore)
@@ -134,6 +137,8 @@ async function measureOnce(
   onProgress: (e: ProgressEvent) => void
 ): Promise<CodeCoverageReport> {
   const specs = await listSpecs(projectPath)
+  // 매 측정 직전 fixture import 적용 — 루프가 이번 반복에 새로 생성한 spec 도 클라 커버리지가 잡히게.
+  await applyFixtureImports(projectPath)
   onProgress({ phase: 'playwright', message: `테스트 ${specs.length}개 실행 + 커버리지 수집 중…` })
   const tool = toolPaths(projectPath)
   const pw = await run(
@@ -366,23 +371,42 @@ const COVERAGE_OUTPUT_DIR = '.qa/coverage/report'
  * 클라 커버리지 fixture(auto)가 모든 테스트에 붙게 한다. 반환된 restore 로 원복한다.
  * 정규식 양방향(patch/restore)이라 이전 실행이 중간에 죽어 남은 패치도 스스로 원복된다.
  */
-async function patchSpecImports(projectPath: string): Promise<() => Promise<void>> {
+const FIXTURE_IMPORT = /from ['"]\.\.\/coverage\/fixtures['"]/g
+const PW_IMPORT = /from ['"]@playwright\/test['"]/g
+
+/** .qa/tests/*.spec.ts 전부에 정규식 치환(바뀐 파일만 기록). from 은 매번 새 lastIndex. */
+async function subSpecs(projectPath: string, from: RegExp, to: string): Promise<number> {
   const dir = join(qaDir(projectPath), 'tests')
-  if (!existsSync(dir)) return async () => {}
+  if (!existsSync(dir)) return 0
   const specs = (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts'))
-  const sub = async (from: RegExp, to: string): Promise<void> => {
-    await Promise.all(
-      specs.map(async (f) => {
-        const p = join(dir, f)
-        const s = await fs.readFile(p, 'utf8')
-        if (from.test(s)) await fs.writeFile(p, s.replace(from, to), 'utf8')
-      })
-    )
-  }
-  await sub(/from ['"]@playwright\/test['"]/g, "from '../coverage/fixtures'")
-  return async () => {
-    await sub(/from ['"]\.\.\/coverage\/fixtures['"]/g, "from '@playwright/test'")
-  }
+  let n = 0
+  await Promise.all(
+    specs.map(async (f) => {
+      const p = join(dir, f)
+      const s = await fs.readFile(p, 'utf8')
+      const out = s.replace(new RegExp(from.source, 'g'), to) // 파일마다 새 정규식(lastIndex 오염 방지)
+      if (out !== s) {
+        await fs.writeFile(p, out, 'utf8')
+        n++
+      }
+    })
+  )
+  return n
+}
+
+/** spec 들의 @playwright/test import 를 커버리지 fixture 로 교체(바뀐 파일 수 반환).
+ *  idempotent — 루프가 매 반복 새로 만든 spec 도 매 측정 직전에 다시 패치되게 measureOnce 에서 호출한다. */
+async function applyFixtureImports(projectPath: string): Promise<number> {
+  return subSpecs(projectPath, PW_IMPORT, "from '../coverage/fixtures'")
+}
+
+/**
+ * .qa/tests/*.spec.ts 의 fixture import 를 원래 `@playwright/test` 로 되돌린다.
+ * 커버리지가 비정상 종료돼 패치가 남았을 때 일반 실행이 깨지지 않도록 하는 방어 복원.
+ * 되돌린 파일 수를 반환(0 이면 남은 패치 없음).
+ */
+export async function restoreSpecImports(projectPath: string): Promise<number> {
+  return subSpecs(projectPath, FIXTURE_IMPORT, "from '@playwright/test'")
 }
 
 interface PatchResult {

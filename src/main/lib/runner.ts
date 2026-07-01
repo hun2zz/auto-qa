@@ -21,6 +21,7 @@ import { authEnv } from './auth'
 import { composeRules } from './rules'
 import { healPrompt, rulesHeader } from './prompts'
 import { loadProjectEnv } from './dotenv'
+import { restoreSpecImports } from './codeCoverage'
 
 /** url 의 프로토콜/호스트(포트 포함)를 base 의 것으로 교체. 경로/쿼리는 유지. */
 function rewriteHost(url: string, base: string): string {
@@ -89,6 +90,11 @@ async function doRun(
   const controller = new AbortController()
   activeRuns.set(projectPath, controller)
   try {
+    // 방어: 직전 커버리지 실행이 비정상 종료돼 spec import 가 커버리지 fixture 로
+    // 패치된 채 남아 있으면 일반 실행이 깨진다. 실행 전 원본(@playwright/test)으로 복원.
+    const healed = await restoreSpecImports(projectPath)
+    if (healed > 0)
+      onProgress({ phase: 'playwright', message: `커버리지 잔여 패치 ${healed}개 복원됨` })
     server = await bootDevServer(projectPath, onProgress)
     await runSeedIfEnabled(projectPath, onProgress)
     const extraEnv = await qaEnv(projectPath)
