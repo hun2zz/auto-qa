@@ -2,6 +2,22 @@
 // 핵심 원칙: AI 는 "탐색·생성"만, 판정은 결정적(Playwright assertion)에 맡긴다.
 // 따라서 프롬프트는 항상 "코드를 실제로 읽고 근거에 기반해" 결과 '파일을 직접 쓰라'고 지시한다.
 
+/** 모든 테스트 생성 프롬프트가 공유하는 가드레일 (셀렉터 유일성·근거·로그인 상태). */
+export const TEST_GUARDRAILS = `# 테스트 작성 가드레일 (필수)
+## 셀렉터 유일성 (strict-mode 위반 방지)
+- 클릭/입력/단언에 쓰는 모든 셀렉터는 **정확히 1개 요소**에 매칭돼야 한다.
+- 이름이 다른 요소의 '부분 문자열'이면 반드시 좁혀라. 예: '상담 신청하기' 가 '59A 상담 신청하기' 의 부분이면
+  → getByRole('button', { name: '상담 신청하기', exact: true }) 또는 컨테이너로 스코프(section/nav 안에서 getByRole, .filter({ hasText }), .first() 는 지양).
+- 같은 텍스트/역할이 여러 개일 수 있으면 코드를 Grep 해 확인하고, 유일해지는 셀렉터를 택한다.
+## 근거 기반 (추측 금지)
+- 텍스트·개수·라우트·역할(role)·구조(footer=contentinfo 등)를 '추측'하지 말고 코드에서 확인한 것만 단언한다.
+  랜드마크 role(contentinfo/navigation 등)은 실제 DOM 노출이 불확실하니, 확신 없으면 getByText 등 직접 셀렉터를 쓴다.
+## 로그인 상태
+- auth(로그인)가 켜진 프로젝트에서는 모든 테스트가 '로그인된 세션(storageState)'으로 실행된다.
+- 따라서 '미인증/로그아웃 상태의 동작'(로그인 폼 노출, 접근 거부 등)을 검증하는 테스트는 그 test 안에서
+  세션을 비워야 한다: test.use({ storageState: { cookies: [], origins: [] } }) 를 그 describe/test 에 적용.`
+
+
 /** grounding 인덱스(진짜 셀렉터/라우트)를 생성 프롬프트에 주입 → 셀렉터 환각 방지 */
 export function indexHeader(index: {
   testids: string[]
@@ -80,6 +96,12 @@ ${args.targets}
 - 같은 변수끼리 비교 금지: const t = await el.textContent(); expect(el).toHaveText(t) ← 항상 통과 = 공허. 기대값은 독립적인 리터럴이어야 한다.
 - expect(true)/expect(1) 같은 리터럴 단언 추가 금지.
 - 단언을 약화하거나 삭제해서 통과시키지 말 것.
+
+# 깨뜨리지 마라 (가장 중요)
+- 강화한 단언은 **실제로 통과할 값·흐름**이어야 한다. 그 값이 화면에 '언제/어떤 조건'에서 나타나는지(트리거·타이밍)를 코드로 확인하고, 그 흐름을 정확히 재현해라.
+- 확신이 없으면 **강화하지 말고 원본을 그대로 둬라.** (통과하던 약한 테스트를 깨진 강한 테스트로 바꾸는 건 최악)
+
+${TEST_GUARDRAILS}
 
 # 출력
 - ${args.testsDir} 의 spec 파일들을 Edit/Write 로 '제자리 수정'.
@@ -246,7 +268,9 @@ ${args.gaps}
 # 출력 (${args.testsDir} 안에 code-flow-<flow>.spec.ts 파일들을 Write)
 - import { test, expect } from '@playwright/test', page.goto 상대경로.
 - 셀렉터는 코드에서 확인. 기존 테스트와 중복 말 것.
-- 파일만 쓰고 result 에는 만든 flow·테스트 수 + unreachable 개수만.`
+- 파일만 쓰고 result 에는 만든 flow·테스트 수 + unreachable 개수만.
+
+${TEST_GUARDRAILS}`
 }
 
 export function codeTestsPrompt(args: { testsDir: string }): string {
@@ -270,7 +294,9 @@ export function codeTestsPrompt(args: { testsDir: string }): string {
 # 규칙
 - 이건 '회귀' 테스트다 — 현재 동작을 단언하되, 명백한 에러 상태(500 등)를 정답으로 박제하지 말 것.
 - 요구사항 기준 테스트(이미 .qa/tests 에 있는 것)와 '중복'되지 않게 — 보완·확장 위주.
-- 파일만 쓰고 result 에는 만든 파일 수·테스트 수·[undocumented] 개수만 요약.`
+- 파일만 쓰고 result 에는 만든 파일 수·테스트 수·[undocumented] 개수만 요약.
+
+${TEST_GUARDRAILS}`
 }
 
 export function authSetupPrompt(args: {
@@ -318,12 +344,16 @@ export function healPrompt(args: {
 ${args.failures}
 
 # 1단계: 분류 (가장 중요)
-spec 과 프로젝트 코드를 Read/Grep 해서 각 실패가 둘 중 무엇인지 판정:
+spec 과 프로젝트 코드를 Read/Grep 해서 각 실패가 무엇인지 판정:
 - **드리프트(DRIFT)**: DOM/셀렉터만 바뀌고 '검증하려는 동작·상태는 그대로 존재'. (버튼 id 변경, 텍스트 약간 변경, 구조 리팩터)
+- **셀렉터 모호(AMBIGUOUS)**: 'strict mode violation ... resolved to N elements' — 셀렉터가 여러 요소에 매칭. 요소들은 멀쩡히 존재하므로 코드 버그가 아니라 '테스트 셀렉터 결함'이다. → 드리프트처럼 고친다.
+- **로그인 상태(AUTH-STATE)**: auth 세션 때문에 '미인증/로그아웃 상태의 동작'(로그인 폼 노출 등)을 검증하는 테스트가 이미 로그인돼 실패. 코드 버그 아님 → 그 test 에 세션 비우기 적용.
 - **회귀(REGRESSION)**: 검증하려던 요소/상태가 '실제로 사라지거나 동작이 깨짐'. (제출 버튼이 아예 없어짐, 성공 메시지가 안 뜸)
 
 # 2단계: 처리
-- **드리프트면**: 깨진 셀렉터만 현재 코드에 맞게 교체. assertion 의 '검증 의도'는 절대 그대로. → Write 로 같은 경로 저장.
+- **드리프트면**: 깨진 셀렉터만 현재 코드에 맞게 교체. assertion 의 '검증 의도'는 절대 그대로.
+- **셀렉터 모호면**: Playwright 에러가 알려준 후보 요소들을 보고, '원래 의도한 하나'에만 매칭되게 셀렉터를 좁힌다 — getByRole(..., { exact: true }) 또는 컨테이너 스코프(section/nav 안에서). 의도한 요소는 spec 의 test 제목·주석으로 판단.
+- **로그인 상태면**: 그 test/describe 에 test.use({ storageState: { cookies: [], origins: [] } }) 를 추가해 로그아웃 상태로 실행되게 한다. (단언 자체는 유지)
 - **회귀면**: **파일을 절대 수정하지 않는다.** 그냥 두고 REAL_BUG 로 보고. (회귀를 초록으로 만들면 안 됨)
 - 확신 없으면 회귀로 간주하고 안 고친다.
 
@@ -332,7 +362,7 @@ spec 과 프로젝트 코드를 Read/Grep 해서 각 실패가 둘 중 무엇인
 - 회귀인데 셀렉터를 바꿔 억지로 통과.
 
 # result 출력 (반드시 이 형식, 한 줄로 시작)
-- 드리프트 고침: "HEALED: <바꾼 셀렉터 한 줄 요약>"
+- 고침(드리프트/셀렉터 모호/로그인 상태): "HEALED: <무엇을 어떻게 좁혔/고쳤는지 한 줄>"
 - 회귀(안 고침): "REAL_BUG: <사라진 요소/깨진 동작>"
 - 못 고침/불확실: "SKIPPED: <사유>"`
 }
@@ -371,5 +401,7 @@ export function testsPrompt(args: {
 # 규칙
 - 불필요한 wait/sleep 금지. auto-waiting + web-first assertion 사용.
 - 셀렉터/값을 코드에서 확정 못 한 시나리오는 test.fixme() + 사유 주석(거짓 통과 방지).
-- 파일만 쓰고, result 에는 만든 시나리오 수와 fixme 수만 요약.`
+- 파일만 쓰고, result 에는 만든 시나리오 수와 fixme 수만 요약.
+
+${TEST_GUARDRAILS}`
 }
