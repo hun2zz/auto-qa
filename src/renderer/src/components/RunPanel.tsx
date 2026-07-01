@@ -254,9 +254,24 @@ const VERDICT: Record<string, { text: string; label: string; box: string }> = {
   skipped: { text: '건너뜀', label: 'text-warn', box: 'border-border bg-surface' }
 }
 
+const isCodeResult = (r: TestResult): boolean => (r.file ?? '').startsWith('code-')
+
 function ReportView({ report }: { report: RunReport }): JSX.Element {
+  const [track, setTrack] = useState<'all' | 'scope' | 'code'>('all')
   const startedAt = new Date(report.startedAt)
-  const passRate = report.total > 0 ? Math.round((report.passed / report.total) * 100) : 0
+
+  const scopeResults = report.results.filter((r) => !isCodeResult(r))
+  const codeResults = report.results.filter((r) => isCodeResult(r))
+  const hasBoth = scopeResults.length > 0 && codeResults.length > 0
+  const shown = track === 'scope' ? scopeResults : track === 'code' ? codeResults : report.results
+
+  const stat = {
+    total: shown.length,
+    passed: shown.filter((r) => r.status === 'passed').length,
+    failed: shown.filter((r) => r.status === 'failed' || r.status === 'timedOut').length,
+    skipped: shown.filter((r) => r.status === 'skipped').length
+  }
+  const passRate = stat.total > 0 ? Math.round((stat.passed / stat.total) * 100) : 0
 
   return (
     <div className="space-y-6">
@@ -272,12 +287,21 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
         </div>
       )}
 
-      {/* 요약 통계 */}
+      {/* 트랙 탭 (두 트랙 결과가 다 있을 때만) */}
+      {hasBoth && (
+        <div className="flex gap-1 rounded-xl border border-border bg-surface-2/40 p-1">
+          <ReportTab active={track === 'all'} onClick={() => setTrack('all')} label="전체" count={report.results.length} />
+          <ReportTab active={track === 'scope'} onClick={() => setTrack('scope')} label="개발범위 완료" count={scopeResults.length} />
+          <ReportTab active={track === 'code'} onClick={() => setTrack('code')} label="코드 정밀" count={codeResults.length} />
+        </div>
+      )}
+
+      {/* 요약 통계 (선택 트랙 기준) */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="전체" value={report.total} tone="brand" />
-        <StatCard label="통과" value={report.passed} tone="ok" />
-        <StatCard label="실패" value={report.failed} tone="bad" />
-        <StatCard label="건너뜀" value={report.skipped} tone="muted" />
+        <StatCard label="전체" value={stat.total} tone="brand" />
+        <StatCard label="통과" value={stat.passed} tone="ok" />
+        <StatCard label="실패" value={stat.failed} tone="bad" />
+        <StatCard label="건너뜀" value={stat.skipped} tone="muted" />
       </div>
 
       {/* 메타 + 통과율 바 */}
@@ -302,18 +326,48 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
       {/* negative-control: 기대값 변형 검증 */}
       <NegativeControlBlock />
 
-      {/* 결과 목록 */}
-      {report.results.length > 0 && (
+      {/* 결과 목록 (선택 트랙) */}
+      {shown.length > 0 && (
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            테스트 결과 ({report.results.length})
+            테스트 결과 ({shown.length})
           </p>
-          {report.results.map((r, i) => (
+          {shown.map((r, i) => (
             <ResultRow key={`${r.title}-${i}`} result={r} />
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function ReportTab({
+  active,
+  onClick,
+  label,
+  count
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  count: number
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition-colors',
+        active ? 'bg-surface text-text ring-1 ring-border' : 'text-muted hover:text-text'
+      ].join(' ')}
+    >
+      {label}
+      <span
+        className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-brand/20 text-brand-soft' : 'bg-surface-2 text-muted'}`}
+      >
+        {count}
+      </span>
+    </button>
   )
 }
 
