@@ -36,6 +36,7 @@ import {
   getLastReport,
   healAndRerun,
   negativeControl,
+  detectFlaky,
   runFailedTests,
   runTests
 } from './lib/runner'
@@ -189,6 +190,9 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.cancelRun, (_e, projectPath: string) => cancelRun(projectPath))
   ipcMain.handle(IPC.negativeControl, (e, projectPath: string, scope?: TestScope) =>
     negativeControl(projectPath, progressSender(e), scope)
+  )
+  ipcMain.handle(IPC.detectFlaky, (e, projectPath: string, repeat: number, scope?: TestScope) =>
+    detectFlaky(projectPath, progressSender(e), repeat, scope)
   )
 
   ipcMain.handle(

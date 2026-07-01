@@ -207,6 +207,39 @@ export interface NegativeControlReport {
 }
 
 // ----------------------------------------------------------------------------
+// Flaky(불안정) 감지: 같은 코드로 N회 반복 실행 → 결과가 들쭉날쭉한 테스트 색출.
+// "Playwright 가 결정적으로 판정" 이라는 전제를 지키기 위한 신뢰 지표.
+// ----------------------------------------------------------------------------
+
+/** 반복 실행 결과가 섞인(불안정) 테스트 1개 */
+export interface FlakyTest {
+  /** spec 파일명 (rootDir 기준) */
+  file?: string
+  title: string
+  line?: number
+  /** N회 중 통과 횟수 */
+  passed: number
+  /** N회 중 실패/타임아웃 횟수 */
+  failed: number
+  /** 실제 실행된 횟수 (skip 제외) */
+  runs: number
+}
+
+export interface FlakyReport {
+  /** 반복 횟수 (--repeat-each N) */
+  repeat: number
+  /** 평가한 테스트 수 */
+  tested: number
+  /** 통과/실패가 섞인 불안정 테스트 (가장 문제) */
+  flaky: FlakyTest[]
+  /** 매번 통과 (안정) */
+  stable: number
+  /** 매번 실패 (불안정 아님 = 진짜 실패) */
+  failing: number
+  fatalError?: string
+}
+
+// ----------------------------------------------------------------------------
 // 생성기 채점 (프롬프트/규칙 변경이 생성 품질을 올렸나 — 이력 추적)
 // ----------------------------------------------------------------------------
 
@@ -411,6 +444,7 @@ export const IPC = {
   runFailedTests: 'tests:runFailed',
   cancelRun: 'tests:cancel',
   negativeControl: 'tests:negativeControl',
+  detectFlaky: 'tests:detectFlaky',
   getLastReport: 'report:last',
   auditCoverage: 'coverage:audit',
   getCoverageReports: 'coverage:list',
@@ -546,6 +580,8 @@ export interface AutoQaApi {
   cancelRun(projectPath: string): Promise<void>
   /** [무거움] 통과 테스트의 기대값을 틀리게 변형해 재실행 → 진짜 검증하는지(sensitive) 확인 */
   negativeControl(projectPath: string, scope?: TestScope): Promise<NegativeControlReport>
+  /** [Flaky 감지] 선택 대상을 N회 반복 실행 → 결과가 섞인 불안정 테스트 색출 */
+  detectFlaky(projectPath: string, repeat: number, scope?: TestScope): Promise<FlakyReport>
   getLastReport(projectPath: string): Promise<RunReport | null>
 
   /** [AI] 요구사항 항목별 구현/테스트검증 여부 감사 → 완료율 + gap 리포트 (브라우저 불필요) */

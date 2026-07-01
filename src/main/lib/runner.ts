@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { basename, isAbsolute, join } from 'node:path'
 import type {
+  FlakyReport,
   HealChange,
   HealResult,
   HealVerdict,
@@ -15,7 +16,7 @@ import type {
 } from '@shared/types'
 import { getConfig, lastReportPath, qaDir, testsDir, writePlaywrightConfig } from './projectManager'
 import { startDevServer, type DevServerHandle } from './devServer'
-import { runPlaywright } from './playwrightRunner'
+import { detectFlakyPlaywright, runPlaywright } from './playwrightRunner'
 import { runClaude } from './claudeRunner'
 import { authEnv } from './auth'
 import { composeRules } from './rules'
@@ -416,6 +417,67 @@ export async function negativeControl(
 
 function ncFail(msg: string): NegativeControlReport {
   return { tested: 0, sensitive: 0, vacuous: 0, specs: [], fatalError: msg }
+}
+
+/**
+ * [Flaky 감지] 대상 spec 을 N회 반복 실행 → 통과/실패가 섞인 '불안정' 테스트 색출.
+ * "Playwright 가 결정적으로 판정" 전제를 지키는 신뢰 점검. 중단 가능(activeRuns).
+ */
+export async function detectFlaky(
+  projectPath: string,
+  onProgress: (e: ProgressEvent) => void,
+  repeat = 5,
+  scope: TestScope = 'all'
+): Promise<FlakyReport> {
+  const inScope = (f: string): boolean =>
+    scope === 'all' ? true : scope === 'code' ? f.startsWith('code-') : !f.startsWith('code-')
+  const controller = new AbortController()
+  activeRuns.set(projectPath, controller)
+  let server: DevServerHandle | null = null
+  try {
+    // 방어 복원 (커버리지 fixture / 변환검증 변형 잔여)
+    await restoreSpecImports(projectPath)
+    await restoreMutationBackups(projectPath)
+    const dir = testsDir(projectPath)
+    const targets = existsSync(dir)
+      ? (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts')).filter(inScope)
+      : []
+    if (targets.length === 0)
+      return { repeat, tested: 0, flaky: [], stable: 0, failing: 0, fatalError: '대상 테스트가 없습니다.' }
+
+    server = await bootDevServer(projectPath, onProgress)
+    await runSeedIfEnabled(projectPath, onProgress)
+    const extraEnv = await qaEnv(projectPath)
+    extraEnv.QA_BASE_URL = server.baseURL
+    if (extraEnv.QA_LOGIN_URL) extraEnv.QA_LOGIN_URL = rewriteHost(extraEnv.QA_LOGIN_URL, server.baseURL)
+    await writePlaywrightConfig(projectPath)
+
+    const report = await detectFlakyPlaywright({
+      projectPath,
+      onProgress,
+      repeat,
+      signal: controller.signal,
+      extraEnv,
+      filters: targets
+    })
+    onProgress({
+      phase: 'playwright',
+      message: report.fatalError
+        ? report.fatalError
+        : `Flaky ${report.flaky.length} · 안정 ${report.stable} · 매번 실패 ${report.failing}`,
+      done: true,
+      error: report.flaky.length > 0 || !!report.fatalError
+    })
+    return report
+  } catch (e) {
+    const aborted = controller.signal.aborted
+    const msg = aborted ? '사용자가 중단했습니다.' : (e as Error).message
+    onProgress({ phase: 'playwright', message: msg, error: true, done: true })
+    return { repeat, tested: 0, flaky: [], stable: 0, failing: 0, fatalError: msg }
+  } finally {
+    activeRuns.delete(projectPath)
+    server?.stop()
+  }
 }
 
 /** 강한 단언의 '기대값'을 명백히 틀린 값으로 변형 (진짜 테스트면 빨간불) */

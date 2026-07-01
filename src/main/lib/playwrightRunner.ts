@@ -1,7 +1,14 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { delimiter, join, resolve as resolvePath } from 'node:path'
-import type { ProgressEvent, RunReport, TestResult, TestStatus } from '@shared/types'
+import type {
+  FlakyReport,
+  FlakyTest,
+  ProgressEvent,
+  RunReport,
+  TestResult,
+  TestStatus
+} from '@shared/types'
 
 /**
  * 타겟 프로젝트에서 Playwright 를 실행하고 JSON 리포트를 RunReport 로 변환.
@@ -22,21 +29,8 @@ export async function runPlaywright(args: {
   targets?: string[]
 }): Promise<RunReport> {
   const { projectPath, onProgress, signal, extraEnv, only, targets } = args
-  const configPath = join('.qa', 'playwright.config.ts')
   const tool = toolPaths(projectPath)
-
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...extraEnv,
-    FORCE_COLOR: '0'
-  }
-  // 번들 playwright 를 쓸 때만 NODE_PATH 로 모듈 해석을 보강한다.
-  // 타겟이 자체 @playwright/test 를 가지면, 러너 바이너리와 spec 의 import 가
-  // 반드시 같은 설치본을 가리켜야 한다(서로 다르면 테스트 등록 레지스트리가 갈려
-  // "No tests found" 가 난다). 그래서 이때는 NODE_PATH 를 주입하지 않는다.
-  if (tool.injectNodePath) {
-    env.NODE_PATH = tool.nodeModules + (process.env.NODE_PATH ? delimiter + process.env.NODE_PATH : '')
-  }
+  const env = buildEnv(tool, extraEnv)
 
   onProgress({
     phase: 'playwright',
@@ -44,22 +38,13 @@ export async function runPlaywright(args: {
     log: `playwright: ${tool.source}`
   })
 
-  const testArgs = ['test', '--config', configPath, '--reporter=json']
+  const testArgs = ['test', '--config', join('.qa', 'playwright.config.ts'), '--reporter=json']
   // 타깃 필터: targets(여러 개) 우선, 없으면 only(단일). Playwright 는 위치 인자를
   // 파일 경로 부분일치 + :line 필터로 받는다.
   const filters = targets && targets.length ? targets : only ? [only] : []
   for (const f of filters) testArgs.push(f)
 
-  let res = await spawnPw(tool, testArgs, { projectPath, env, signal, onProgress })
-
-  // 브라우저 미설치 → 자동 설치 후 1회 재시도
-  if (needsBrowserInstall(res.stdout + res.stderr)) {
-    onProgress({ phase: 'playwright', message: 'Playwright 브라우저 설치 중… (최초 1회)' })
-    await spawnPw(tool, ['install', 'chromium'], { projectPath, env, signal, onProgress })
-    onProgress({ phase: 'playwright', message: '브라우저 설치 완료, 재실행…' })
-    res = await spawnPw(tool, testArgs, { projectPath, env, signal, onProgress })
-  }
-
+  const res = await execWithBrowserRetry(tool, testArgs, { projectPath, env, signal, onProgress })
   if (res.spawnError) return fatal(`Playwright 실행 실패: ${res.spawnError}`)
   const json = extractJson(res.stdout)
   if (!json) return fatal(res.stderr.slice(-3000) || 'Playwright JSON 리포트를 파싱하지 못했습니다.')
@@ -68,6 +53,70 @@ export async function runPlaywright(args: {
   } catch (e) {
     return fatal(`리포트 변환 실패: ${(e as Error).message}`)
   }
+}
+
+/**
+ * [Flaky 감지] 대상 테스트를 --repeat-each N (재시도 0)로 실행하고, 반복 결과가
+ * '섞인'(통과+실패 공존) 테스트를 색출한다. retries=0 이라 각 반복은 단일 시도 → 진짜 불안정만 잡힘.
+ */
+export async function detectFlakyPlaywright(args: {
+  projectPath: string
+  onProgress: (e: ProgressEvent) => void
+  repeat: number
+  signal?: AbortSignal
+  extraEnv?: Record<string, string>
+  /** 대상 필터(파일/트랙). 비면 전체 */
+  filters?: string[]
+}): Promise<FlakyReport> {
+  const { projectPath, onProgress, signal, extraEnv, repeat, filters } = args
+  const tool = toolPaths(projectPath)
+  const env = buildEnv(tool, extraEnv)
+
+  const testArgs = [
+    'test',
+    '--config',
+    join('.qa', 'playwright.config.ts'),
+    '--reporter=json',
+    `--repeat-each=${repeat}`,
+    '--retries=0'
+  ]
+  for (const f of filters ?? []) testArgs.push(f)
+
+  onProgress({ phase: 'playwright', message: `Flaky 감지: 각 테스트 ${repeat}회 반복 실행 중…` })
+  const res = await execWithBrowserRetry(tool, testArgs, { projectPath, env, signal, onProgress })
+  if (res.spawnError) return flakyFatal(`Playwright 실행 실패: ${res.spawnError}`)
+  const json = extractJson(res.stdout)
+  if (!json) return flakyFatal(res.stderr.slice(-3000) || 'Playwright JSON 리포트를 파싱하지 못했습니다.')
+  try {
+    return parseFlaky(json, repeat)
+  } catch (e) {
+    return flakyFatal(`리포트 변환 실패: ${(e as Error).message}`)
+  }
+}
+
+/** 실행 env 구성 (번들 playwright 일 때만 NODE_PATH 주입 — 타겟 자체 설치본은 미주입). */
+function buildEnv(tool: ToolPaths, extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv, FORCE_COLOR: '0' }
+  if (tool.injectNodePath) {
+    env.NODE_PATH = tool.nodeModules + (process.env.NODE_PATH ? delimiter + process.env.NODE_PATH : '')
+  }
+  return env
+}
+
+/** playwright 실행 + 브라우저 미설치 시 자동 설치 후 1회 재시도. */
+async function execWithBrowserRetry(
+  tool: ToolPaths,
+  testArgs: string[],
+  opts: { projectPath: string; env: NodeJS.ProcessEnv; signal?: AbortSignal; onProgress: (e: ProgressEvent) => void }
+): Promise<PwResult> {
+  let res = await spawnPw(tool, testArgs, opts)
+  if (needsBrowserInstall(res.stdout + res.stderr)) {
+    opts.onProgress({ phase: 'playwright', message: 'Playwright 브라우저 설치 중… (최초 1회)' })
+    await spawnPw(tool, ['install', 'chromium'], opts)
+    opts.onProgress({ phase: 'playwright', message: '브라우저 설치 완료, 재실행…' })
+    res = await spawnPw(tool, testArgs, opts)
+  }
+  return res
 }
 
 interface ToolPaths {
@@ -227,6 +276,67 @@ function toReport(json: Record<string, unknown>): RunReport {
     skipped: results.filter((r) => r.status === 'skipped').length,
     results
   }
+}
+
+function flakyFatal(msg: string): FlakyReport {
+  return { repeat: 0, tested: 0, flaky: [], stable: 0, failing: 0, fatalError: msg }
+}
+
+/**
+ * repeat-each 결과에서 flaky(통과+실패 공존)를 색출.
+ * ⚠️ Playwright 의 --repeat-each 는 '같은 테스트'를 별도 spec 항목으로 N번 중복 등장시킨다
+ *   (한 spec 안에 N개 results 가 아님). 그래서 file+title+line 으로 묶어 N회를 합산해야
+ *   flaky 판정이 된다. (안 묶으면 각 항목이 결과 1개뿐이라 절대 '섞임'이 안 나옴)
+ */
+function parseFlaky(json: Record<string, unknown>, repeat: number): FlakyReport {
+  interface Agg {
+    file?: string
+    title: string
+    line?: number
+    passed: number
+    failed: number
+  }
+  const groups = new Map<string, Agg>()
+
+  const walk = (suite: PwSuite, file?: string): void => {
+    const f = suite.file ?? file
+    for (const spec of suite.specs ?? []) {
+      const key = `${f ?? ''}::${spec.title}::${spec.line ?? ''}`
+      const g = groups.get(key) ?? { file: f, title: spec.title, line: spec.line, passed: 0, failed: 0 }
+      for (const t of spec.tests ?? []) {
+        for (const r of t.results ?? []) {
+          const st = normalizeStatus(r.status)
+          if (st === 'passed') g.passed++
+          else if (st === 'skipped') {
+            /* skip 은 실행 횟수에서 제외 */
+          } else g.failed++ // failed | timedOut
+        }
+      }
+      groups.set(key, g)
+    }
+    for (const child of suite.suites ?? []) walk(child, f)
+  }
+  for (const s of (json.suites as PwSuite[]) ?? []) walk(s)
+
+  const flaky: FlakyTest[] = []
+  let stable = 0
+  let failing = 0
+  let tested = 0
+  for (const g of groups.values()) {
+    const runs = g.passed + g.failed
+    if (runs === 0) continue // 전부 skip → 평가 대상 아님
+    tested++
+    if (g.passed > 0 && g.failed > 0) {
+      flaky.push({ title: g.title, file: g.file, line: g.line, passed: g.passed, failed: g.failed, runs })
+    } else if (g.failed === runs) {
+      failing++ // 매번 실패 = 진짜 실패(불안정 아님)
+    } else {
+      stable++ // 매번 통과
+    }
+  }
+  // 불안정 심한 순(실패 비율 높은 순)
+  flaky.sort((a, b) => b.failed / b.runs - a.failed / a.runs)
+  return { repeat, tested, flaky, stable, failing }
 }
 
 function normalizeStatus(s?: string): TestStatus {

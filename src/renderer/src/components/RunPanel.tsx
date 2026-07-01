@@ -152,6 +152,79 @@ function NegativeControlBlock({ scope }: { scope: TestScope }): JSX.Element {
   )
 }
 
+function FlakyBlock({ scope }: { scope: TestScope }): JSX.Element {
+  const run = useStore((s) => s.runFlakyDetection)
+  const busy = useStore((s) => !!s.busyKeys['detectFlaky'])
+  const report = useStore((s) => s.flaky)
+  const [repeat, setRepeat] = useState(5)
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-text">
+            Flaky(불안정) 감지
+            <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
+              대상: {SCOPE_LABEL[scope]}
+            </span>
+          </h3>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+            같은 코드로 각 테스트를 N회 반복 실행 → 통과/실패가 섞이면 '불안정'. 랜덤하게 깨지는
+            테스트를 색출해 '결정적 판정'의 신뢰를 지킨다. (무거움 · 재시도 0)
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <select
+            value={repeat}
+            onChange={(e) => setRepeat(Number(e.target.value))}
+            disabled={busy}
+            className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] text-text"
+          >
+            <option value={3}>3회</option>
+            <option value={5}>5회</option>
+            <option value={10}>10회</option>
+          </select>
+          <Button
+            variant="secondary"
+            loading={busy}
+            loadingText="반복 실행 중… (무거움)"
+            onClick={() => void run(repeat, scope)}
+          >
+            반복 실행
+          </Button>
+        </div>
+      </div>
+      {report && !report.fatalError && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone={report.flaky.length > 0 ? 'bad' : 'ok'}>불안정 {report.flaky.length}</Badge>
+            <Badge tone="ok">안정 {report.stable}</Badge>
+            {report.failing > 0 && <Badge tone="warn">매번 실패 {report.failing}</Badge>}
+            <Badge tone="muted">검사 {report.tested} · {report.repeat}회</Badge>
+          </div>
+          {report.flaky.length > 0 ? (
+            <ul className="mt-2 space-y-1">
+              {report.flaky.map((t, i) => (
+                <li key={i} className="font-mono text-[11px] text-bad">
+                  ⚠ {t.file}:{t.line} — {t.title.slice(0, 48)}{' '}
+                  <span className="text-muted">
+                    ({t.passed}✓/{t.failed}✗ of {t.runs})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[11.5px] text-ok">불안정한 테스트 없음 — 모두 결정적으로 동작합니다.</p>
+          )}
+        </div>
+      )}
+      {report?.fatalError && (
+        <p className="mt-2 whitespace-pre-wrap text-[11.5px] text-bad">{report.fatalError}</p>
+      )}
+    </div>
+  )
+}
+
 function SelfHealing({ report, track }: { report: RunReport; track: TestScope }): JSX.Element | null {
   const healAndRerun = useStore((s) => s.healAndRerun)
   const healing = useStore((s) => !!s.busyKeys['healAndRerun'])
@@ -388,6 +461,7 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
 
       {/* negative-control: 기대값 변형 검증 */}
       <NegativeControlBlock scope={track} />
+      <FlakyBlock scope={track} />
 
       {/* 결과 목록 (선택 트랙) + 체크박스 다중 선택 실행 */}
       {shown.length > 0 && (

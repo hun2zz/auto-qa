@@ -42,6 +42,7 @@ const api: AutoQaApi = {
   runFailedTests: (p) => ipcRenderer.invoke(IPC.runFailedTests, p),
   cancelRun: (p) => ipcRenderer.invoke(IPC.cancelRun, p),
   negativeControl: (p, scope) => ipcRenderer.invoke(IPC.negativeControl, p, scope),
+  detectFlaky: (p, repeat, scope) => ipcRenderer.invoke(IPC.detectFlaky, p, repeat, scope),
   getLastReport: (p) => ipcRenderer.invoke(IPC.getLastReport, p),
   getTraceability: (p) => ipcRenderer.invoke(IPC.getTraceability, p),
 

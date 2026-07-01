@@ -9,6 +9,7 @@ import type {
   ProgressPhase,
   AuthStatus,
   HealResult,
+  FlakyReport,
   NegativeControlReport,
   RuleFile,
   CoverageReport,
@@ -57,6 +58,7 @@ interface AppState {
   authStatus: AuthStatus | null
   lastHeal: HealResult | null
   negativeControl: NegativeControlReport | null
+  flaky: FlakyReport | null
   rules: RuleFile[]
   coverageReports: CoverageReport[]
   codeCoverage: CodeCoverageReport | null
@@ -142,6 +144,7 @@ interface AppState {
   generateAuthSetup: (config?: QaConfig) => Promise<void>
   healAndRerun: (only?: string[]) => Promise<void>
   runNegativeControl: (scope?: TestScope) => Promise<void>
+  runFlakyDetection: (repeat: number, scope?: TestScope) => Promise<void>
 }
 
 let logSeq = 0
@@ -180,6 +183,7 @@ export const useStore = create<AppState>((set, get) => {
     authStatus: null,
     lastHeal: null,
     negativeControl: null,
+    flaky: null,
     rules: [],
     coverageReports: [],
     codeCoverage: null,
@@ -764,6 +768,23 @@ export const useStore = create<AppState>((set, get) => {
           get().pushToast(
             negativeControl.vacuous > 0 ? 'error' : 'success',
             `진짜 검증 ${negativeControl.sensitive} · 알맹이없음 ${negativeControl.vacuous}`
+          )
+        }
+      })
+    },
+
+    runFlakyDetection: async (repeat, scope = 'all') => {
+      const { project } = get()
+      if (!project) return
+      await withBusy('detectFlaky', async () => {
+        const flaky = await window.api.detectFlaky(project.path, repeat, scope)
+        set({ flaky })
+        if (flaky.fatalError) {
+          get().pushToast('error', `Flaky 감지 실패: ${flaky.fatalError}`)
+        } else {
+          get().pushToast(
+            flaky.flaky.length > 0 ? 'error' : 'success',
+            `불안정 ${flaky.flaky.length} · 안정 ${flaky.stable} · 매번 실패 ${flaky.failing}`
           )
         }
       })
