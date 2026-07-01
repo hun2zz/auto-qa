@@ -215,10 +215,19 @@ export async function runCoverageLoop(
     return fail((e as Error).message)
   }
   let report: CodeCoverageReport | null = null
+  // 헛돌이 방지: 직전 라운드에 타깃(gap)이었는데 재측정에도 안 오른 파일 → '못 채우는 것'으로 보고 제외.
+  // (static page/layout 처럼 구조상 안 잡히는 파일을 무한히 쫓지 않게 함)
+  const stuck = new Set<string>()
+  let prevPct: Record<string, number> = {}
   try {
     for (let i = 0; i < maxIterations; i++) {
       report = await measureOnce(projectPath, ctx, onProgress)
       if (report.fatalError) break
+      // 직전 타깃 중 개선 없는 파일을 stuck 으로 승격
+      for (const g of report.gaps) {
+        if (g.pct < 50 && prevPct[g.file] != null && g.pct <= prevPct[g.file]) stuck.add(g.file)
+      }
+      prevPct = Object.fromEntries(report.gaps.map((g) => [g.file, g.pct]))
       onProgress({
         phase: 'analyze',
         message: `반복 ${i + 1}/${maxIterations} — 라인 ${report.lines.pct}% (목표 ${targetPct}%)`,
@@ -229,10 +238,10 @@ export async function runCoverageLoop(
         break
       }
       if (i === maxIterations - 1) break // 마지막 반복은 측정으로 끝
-      // gap → flow 테스트 생성 (다음 측정에 반영)
-      const made = await generateFlowTests(projectPath, report.gaps, onProgress)
+      // gap → flow 테스트 생성 (다음 측정에 반영). 못 잡는 static·stuck 파일은 제외.
+      const made = await generateFlowTests(projectPath, report.gaps, stuck, onProgress)
       if (made === 0) {
-        onProgress({ phase: 'analyze', message: '더 만들 flow 테스트가 없습니다(수렴).', done: true })
+        onProgress({ phase: 'analyze', message: '더 채울 수 있는 gap 이 없습니다(수렴).', done: true })
         break
       }
     }
@@ -242,21 +251,44 @@ export async function runCoverageLoop(
   }
 }
 
+/**
+ * E2E 커버리지로 '구조상' 못 잡는 Next 빌드타임 특수 파일(메타데이터/에셋 라우트).
+ * icon/apple-icon/opengraph-image/twitter-image/sitemap/robots/manifest — 요청 때 실행되지 않고
+ * 빌드 때 에셋으로 구워지므로 루프가 아무 테스트를 만들어도 커버리지가 안 오른다 → gap 에서 제외.
+ */
+const UNCOVERABLE_SPECIAL =
+  /(^|\/)(icon|apple-icon|opengraph-image|twitter-image|sitemap|robots|manifest)\.[jt]sx?$/
+function isUncoverableGap(file: string): boolean {
+  return UNCOVERABLE_SPECIAL.test(file)
+}
+
 /** [AI] gap(안 덮인 파일)을 흐름으로 묶어 그 흐름의 E2E 테스트 생성 → .qa/tests/code-flow-*.spec.ts */
 async function generateFlowTests(
   projectPath: string,
   gaps: { file: string; pct: number }[],
+  exclude: Set<string>,
   onProgress: (e: ProgressEvent) => void
 ): Promise<number> {
+  // 채울 수 있는 gap 만 남긴다: 50% 미만 & 구조상 못 잡는 static 특수파일 아님 & stuck 아님.
+  const targets = gaps.filter((g) => g.pct < 50 && !isUncoverableGap(g.file) && !exclude.has(g.file))
+  const skipped = gaps.filter((g) => g.pct < 50).length - targets.length
+  if (targets.length === 0) {
+    // 못 잡는 gap 뿐이면 AI 를 호출하지 않는다(토큰 낭비·헛돌이 방지).
+    if (skipped > 0)
+      onProgress({ phase: 'tests', message: `남은 gap ${skipped}개는 구조상 못 잡음 → 생성 생략` })
+    return 0
+  }
   // AI 가 파일명을 code-flow-* 가 아닌 code-<flow>* 로 쓸 수 있으므로, '전체 spec 수'의
   // 증가로 생성 여부를 판단한다. (prefix 로만 세면 false 수렴이 발생)
   const before = (await listSpecs(projectPath)).length
-  const gapList = gaps
-    .filter((g) => g.pct < 50)
+  const gapList = targets
     .slice(0, 30)
     .map((g) => `- ${g.file} (${g.pct}%)`)
     .join('\n')
-  onProgress({ phase: 'tests', message: 'gap을 흐름으로 묶어 flow 테스트 생성 중…' })
+  onProgress({
+    phase: 'tests',
+    message: `gap을 흐름으로 묶어 flow 테스트 생성 중…${skipped > 0 ? ` (못 잡는 ${skipped}개 제외)` : ''}`
+  })
   const res = await runClaude({
     projectPath,
     prompt: flowTestsPrompt({ gaps: gapList, testsDir: join(qaDir(projectPath), 'tests') }),
