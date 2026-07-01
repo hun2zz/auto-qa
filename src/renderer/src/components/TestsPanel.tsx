@@ -450,9 +450,9 @@ function EvalReport({ result }: { result: EvalResult }): JSX.Element {
     delta === null ? (
       <span className="text-[11px] text-muted">첫 측정</span>
     ) : delta > 0 ? (
-      <span className="text-[11px] font-semibold text-emerald-500">▲ {delta}p 개선</span>
+      <span className="text-[11px] font-semibold text-ok">▲ {delta}p 개선</span>
     ) : delta < 0 ? (
-      <span className="text-[11px] font-semibold text-rose-500">▼ {-delta}p 하락</span>
+      <span className="text-[11px] font-semibold text-bad">▼ {-delta}p 하락</span>
     ) : (
       <span className="text-[11px] text-muted">변화 없음</span>
     )

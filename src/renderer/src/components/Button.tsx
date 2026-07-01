@@ -19,19 +19,18 @@ interface ButtonProps {
 }
 
 const VARIANTS: Record<Variant, string> = {
-  primary:
-    'bg-brand text-white hover:bg-brand-soft active:translate-y-px shadow-[0_4px_14px_-4px_rgba(99,102,241,0.6)]',
+  // Vercel 스타일: 프라이머리 = 흰 배경/검정 글자
+  primary: 'bg-white text-black hover:bg-white/90 active:translate-y-px',
   secondary:
-    'bg-surface-2 text-text border border-border hover:border-brand/60 hover:bg-surface-2/70 active:translate-y-px',
+    'bg-transparent text-text border border-border hover:border-muted/60 hover:bg-surface-2 active:translate-y-px',
   ghost: 'text-muted hover:text-text hover:bg-surface-2 active:translate-y-px',
-  success:
-    'bg-ok/15 text-ok border border-ok/40 hover:bg-ok/25 active:translate-y-px'
+  success: 'bg-ok/15 text-ok border border-ok/40 hover:bg-ok/25 active:translate-y-px'
 }
 
 const SIZES: Record<Size, string> = {
-  sm: 'h-8 px-3 text-xs gap-1.5 rounded-lg',
-  md: 'h-9 px-4 text-sm gap-2 rounded-lg',
-  lg: 'h-11 px-5 text-sm gap-2 rounded-xl'
+  sm: 'h-8 px-3 text-xs gap-1.5 rounded-md',
+  md: 'h-9 px-3.5 text-[13px] gap-2 rounded-md',
+  lg: 'h-10 px-4 text-sm gap-2 rounded-lg'
 }
 
 export function Button({

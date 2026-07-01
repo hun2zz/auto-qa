@@ -1,18 +1,18 @@
 @import 'tailwindcss';
 
-/* ── 디자인 토큰 (다크, 차분한 인디고/슬레이트) ─────────────────────────── */
+/* ── 디자인 토큰 (Vercel / Geist 스타일: 순검정 · 모노크롬 · 블루 액센트) ─── */
 @theme {
-  --color-bg: #0b0f17;
-  --color-surface: #121826;
-  --color-surface-2: #1a2233;
-  --color-border: #243049;
-  --color-muted: #8a94a7;
-  --color-text: #e6eaf2;
-  --color-brand: #6366f1;
-  --color-brand-soft: #818cf8;
-  --color-ok: #22c55e;
-  --color-warn: #f59e0b;
-  --color-bad: #ef4444;
+  --color-bg: #000000;
+  --color-surface: #0a0a0a;
+  --color-surface-2: #171717;
+  --color-border: #2a2a2a;
+  --color-muted: #a1a1a1;
+  --color-text: #ededed;
+  --color-brand: #0070f3;
+  --color-brand-soft: #3291ff;
+  --color-ok: #3dd68c;
+  --color-warn: #f5a623;
+  --color-bad: #ff5c60;
 }
 
 html,
@@ -26,8 +26,12 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family:
-    'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+    'Geist', 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
 }
 
