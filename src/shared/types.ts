@@ -294,6 +294,59 @@ export interface RunReport {
 }
 
 // ----------------------------------------------------------------------------
+// 추적성(Traceability): 요구사항 → 체크리스트 → 테스트 → 실행을 한 줄로 잇는다.
+// 새로 수집하지 않고 기존 산출물(.qa/*)을 조인만 한다 → 결정적, AI 미사용.
+// ----------------------------------------------------------------------------
+
+/** 한 행의 검증 상태(신호등). 위에서부터 우선순위로 판정. */
+export type TraceState =
+  | 'verified' // 테스트 있고 마지막 실행 전부 통과
+  | 'failing' // 테스트 있고 실패 포함
+  | 'not-run' // 테스트는 있는데 실행 기록 없음
+  | 'no-test' // (승인된) 체크리스트는 있는데 테스트 미생성
+  | 'draft' // 체크리스트가 아직 승인 전
+  | 'no-checklist' // 요구사항은 있는데 체크리스트 없음
+
+/** 추적 행 하나 (체크리스트 단위 = scope, 또는 요구사항 링크 없는 code-*.spec = code) */
+export interface TraceRow {
+  track: 'scope' | 'code'
+  /** scope: 원본 요구사항 파일명 · code: null */
+  requirement: string | null
+  /** 체크리스트 제목 또는 spec 파일명 */
+  title: string
+  checklistId: string | null
+  checklistStatus: ChecklistStatus | null
+  /** 연결된 spec 파일명(basename) · 없으면 null */
+  specFile: string | null
+  /** 요구사항이 체크리스트보다 최신 = 재분해 권장 */
+  sourceStale?: boolean
+  /** 체크리스트가 spec 보다 최신 = 테스트 재생성 권장 */
+  specStale?: boolean
+  /** 마지막 실행에서 이 spec 의 결과 집계 · 실행 기록 없으면 null */
+  run: { passed: number; failed: number; skipped: number; total: number } | null
+  state: TraceState
+}
+
+export interface TraceabilityReport {
+  generatedAt: string
+  rows: TraceRow[]
+  summary: {
+    requirements: number
+    checklists: number
+    specs: number
+    verified: number
+    failing: number
+    /** no-test + no-checklist (검증 안 되는 구멍) */
+    gaps: number
+    /** 개발범위(scope) 행 중 verified 비율 0~100 */
+    verifiedPct: number
+  }
+  /** 참고 지표 */
+  codeCoveragePct?: number
+  lastRunAt?: string
+}
+
+// ----------------------------------------------------------------------------
 // 진행 상황 스트리밍 이벤트 (main → renderer, webContents.send)
 // ----------------------------------------------------------------------------
 
@@ -364,6 +417,7 @@ export const IPC = {
   runCodeCoverage: 'coverage:code:run',
   getCodeCoverage: 'coverage:code:get',
   runCoverageLoop: 'coverage:code:loop',
+  getTraceability: 'trace:get',
   // auth
   getAuthStatus: 'auth:status',
   setAuthSecret: 'auth:setSecret',
@@ -512,6 +566,9 @@ export interface AutoQaApi {
     targetPct: number,
     maxIterations: number
   ): Promise<CodeCoverageReport>
+
+  /** [추적성] 요구사항→체크리스트→테스트→실행을 조인한 매트릭스 (결정적, AI 미사용) */
+  getTraceability(projectPath: string): Promise<TraceabilityReport>
 
   // --- 로그인(auth) ---
   getAuthStatus(projectPath: string): Promise<AuthStatus>

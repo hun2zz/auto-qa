@@ -18,12 +18,13 @@ import type {
   SelectorValidation,
   EvalResult,
   TestFile,
-  TestScope
+  TestScope,
+  TraceabilityReport
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
 /** 파이프라인 단계 식별자 */
-export type StepId = 'requirements' | 'checklists' | 'tests' | 'run' | 'coverage'
+export type StepId = 'requirements' | 'checklists' | 'tests' | 'run' | 'coverage' | 'traceability'
 
 /** 콘솔에 쌓이는 진행 로그 한 줄 */
 export interface LogLine {
@@ -59,6 +60,7 @@ interface AppState {
   rules: RuleFile[]
   coverageReports: CoverageReport[]
   codeCoverage: CodeCoverageReport | null
+  traceability: TraceabilityReport | null
 
   // ── UI 상태 ────────────────────────────────────────────────────
   activeStep: StepId
@@ -133,6 +135,7 @@ interface AppState {
   runCodeCoverage: () => Promise<void>
   runCoverageLoop: (targetPct: number, maxIterations: number) => Promise<void>
   loadCodeCoverage: () => Promise<void>
+  loadTraceability: () => Promise<void>
 
   loadAuthStatus: () => Promise<void>
   setAuthSecret: (password: string) => Promise<void>
@@ -180,6 +183,7 @@ export const useStore = create<AppState>((set, get) => {
     rules: [],
     coverageReports: [],
     codeCoverage: null,
+    traceability: null,
     knownWorld: '',
     assertionReport: null,
     selectorValidation: null,
@@ -293,6 +297,7 @@ export const useStore = create<AppState>((set, get) => {
         get().loadAuthStatus(),
         get().loadCoverageReports(),
         get().loadCodeCoverage(),
+        get().loadTraceability(),
         get().loadKnownWorld(),
         get().loadTestFiles()
       ])
@@ -649,6 +654,13 @@ export const useStore = create<AppState>((set, get) => {
       if (!project) return
       const codeCoverage = await window.api.getCodeCoverage(project.path).catch(() => null)
       set({ codeCoverage })
+    },
+
+    loadTraceability: async () => {
+      const { project } = get()
+      if (!project) return
+      const traceability = await window.api.getTraceability(project.path).catch(() => null)
+      set({ traceability })
     },
 
     runCodeCoverage: async () => {

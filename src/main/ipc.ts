@@ -41,6 +41,7 @@ import {
 } from './lib/runner'
 import { getAuthStatus, setAuthSecret } from './lib/auth'
 import { getCodeCoverage, runCodeCoverage, runCoverageLoop } from './lib/codeCoverage'
+import { getTraceability } from './lib/traceability'
 import { buildIndex, validateSelectors } from './lib/codeIndex'
 
 /** 진행 이벤트를 호출한 창으로 전달 */
@@ -212,6 +213,7 @@ export function registerIpc(): void {
     }
   )
   ipcMain.handle(IPC.getLastReport, (_e, projectPath: string) => getLastReport(projectPath))
+  ipcMain.handle(IPC.getTraceability, (_e, projectPath: string) => getTraceability(projectPath))
 
   // auth
   ipcMain.handle(IPC.getAuthStatus, (_e, projectPath: string) => getAuthStatus(projectPath))

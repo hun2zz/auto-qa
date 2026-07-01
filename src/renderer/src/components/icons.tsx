@@ -42,6 +42,13 @@ export const FlaskIcon = (p: IconProps): JSX.Element => (
   </svg>
 )
 
+export const GridIcon = (p: IconProps): JSX.Element => (
+  <svg {...base(p)}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 9h18M3 15h18M9 3v18" />
+  </svg>
+)
+
 export const PlayIcon = (p: IconProps): JSX.Element => (
   <svg {...base(p)}>
     <path d="m6 3 14 9-14 9Z" />
