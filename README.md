@@ -20,6 +20,89 @@ flowchart LR
 
 ---
 
+## 한눈에 보는 전체 과정
+
+폴더 연결부터 CI 게이트까지 한 장. 🤖=AI(생성·분류·치유) · ⚖️=결정적(Playwright/정적분석) · 👤=사람.
+
+```mermaid
+flowchart TD
+    START(["📁 프로젝트 폴더 열기<br/>.qa/ 생성 · git 에 함께 커밋"])
+
+    subgraph IN["① 입력"]
+        REQ["요구사항<br/>업로드(md/pdf/이미지) · 붙여넣기 · /qa-capture 의도"]
+    end
+    START --> REQ
+
+    subgraph GEN["② 생성 (AI) + 사람 승인"]
+        SPLIT["🤖 자동 분해<br/>거대 요구사항 → 모듈 N개"]
+        CL["🤖 체크리스트 생성 (모듈별 병렬)<br/>Given/When/Then"]
+        APV["👤 검토 · 승인"]
+        IDX[("grounding 인덱스<br/>실존 testid/aria/route")]
+        GT["🤖 테스트 생성 → .qa/tests/*.spec.ts"]
+        SPLIT --> CL --> APV --> GT
+        IDX -.환각 차단 주입.-> CL
+        IDX -.환각 차단 주입.-> GT
+    end
+    REQ --> SPLIT
+
+    subgraph TRACK["두 트랙으로 생성"]
+        T1["개발범위 테스트<br/>요구사항이 됐나 (spec)"]
+        T2["코드 정밀 테스트<br/>회귀·엣지 (code-*.spec)"]
+    end
+    GT --> T1 & T2
+
+    subgraph QC["③ 정적 품질검사 3종 · 토큰 0 · 결정적"]
+        QS["⚖️ 셀렉터 검증<br/>지어낸 testid?"]
+        QA["⚖️ 단언 강도<br/>강/약/공허"]
+        QE["⚖️ 생성 채점<br/>규칙 바꿔 좋아졌나(이력)"]
+    end
+    T1 & T2 --> QS --> QA --> QE
+
+    subgraph RUN["④ 실행 & 리포트 · 결정적"]
+        DEV["dev 서버 구동 (+auth 세션 재사용)"]
+        PW["⚖️ Playwright 실행<br/>통과 / 실패 / 스킵"]
+        HEAL["🤖 self-healing 분류<br/>드리프트(고침) vs REAL_BUG"]
+        NEG["⚖️ 네거티브 컨트롤<br/>기댓값 일부러 틀림 → 빨개지나?"]
+        DEV --> PW
+        PW -->|실패| HEAL -->|재실행| PW
+        PW --> NEG
+    end
+    QE --> DEV
+
+    subgraph COV["⑤ 코드 커버리지 (무거운 별도 모드)"]
+        CB["next build 1회 → next start<br/>서버(V8)+클라(fixture) 이중 수집"]
+        CM["소스맵 remap + 병합 → 라인 %"]
+        LOOP["🤖 커버리지 루프<br/>빈 흐름 → flow 테스트 생성 → 재측정"]
+        CB --> CM --> LOOP
+        LOOP -.gap 채우는 새 테스트.-> GT
+    end
+    PW --> CB
+
+    subgraph AUDIT["곁다리 감사 (AI, 브라우저 X)"]
+        AU1["🤖 구현 감사<br/>요구사항 ↔ 코드 · 완료율%"]
+        AU2["🤖 요구사항 테스트 커버리지<br/>요구사항 ↔ spec"]
+    end
+    REQ -.-> AU1
+    T1 -.-> AU2
+
+    CI(["🔁 CI 게이트<br/>.qa/ci/run.mjs · PR마다 헤드리스 실행"])
+    NEG --> CI
+    CM --> CI
+
+    classDef ai fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+    classDef det fill:#ecfdf5,stroke:#10b981,color:#064e3b
+    classDef human fill:#fff7ed,stroke:#f59e0b,color:#7c2d12
+    classDef data fill:#f5f3ff,stroke:#a78bfa,color:#4c1d95
+    class SPLIT,CL,GT,HEAL,LOOP,AU1,AU2 ai
+    class QS,QA,QE,PW,NEG,CM det
+    class APV human
+    class IDX data
+```
+
+**읽는 법:** 위→아래가 기본 진행. 되돌아가는 화살표 두 개가 핵심 루프다 — ① 실행에서 실패하면 `self-healing`이 분류 후 재실행, ② 커버리지 루프가 빈 흐름을 발견하면 `테스트 생성`으로 돌아가 새 flow 를 만든다. 점선은 "주입/곁다리"(인덱스 주입, AI 감사)로 본선 흐름은 아니다.
+
+---
+
 ## 핵심 기능
 
 | 기능 | 설명 |
@@ -186,14 +269,41 @@ flowchart LR
 
 동작 (자동, 임시 패치는 백업·복원):
 1. 타겟에 `nextcov`/`@playwright/test` 없으면 설치
-2. `.qa/coverage/` 에 nextcov 하니스 생성 (testDir → `.qa/tests`)
-3. `next.config`(소스맵) + `tsconfig`(.qa 빌드 제외) 임시 패치
-4. `next build` → `next start`(NODE_V8_COVERAGE + `--inspect`) — **next 를 직접 실행**(npm 래퍼 X)
-5. 생성된 테스트 실행 → 서버(NODE_V8) + 클라(CDP) 수집 → 소스맵 remap → `coverage-final.json` → %
-6. 패치 복원
+2. `.qa/coverage/` 에 nextcov 하니스 + **클라 수집 fixture** 생성 (testDir → `.qa/tests`)
+3. `next.config`(소스맵) + `tsconfig`(.qa 빌드 제외) + **spec import**(`@playwright/test` → fixture) 임시 패치
+4. `next build`(1회, `.next` 초기화 + `NODE_ENV=production`) → `next start`(NODE_V8_COVERAGE + `--inspect`) — **next 를 직접 실행**(npm 래퍼 X)
+5. 생성된 테스트 실행 → **서버**(NODE_V8) + **클라**(브라우저 fixture) 이중 수집 → 소스맵 remap → 병합 → `coverage-final.json` → %
+6. 패치 복원 (spec import·next.config·tsconfig 모두 원본으로)
 
-> 커버리지가 낮으면 = **테스트가 아직 부족**하다는 정직한 신호 (모듈을 더 생성하고 auth/시드를 붙이면 올라감).
-> 제약: production 빌드라 수 분 소요. 서버 커버리지는 안정적, 클라이언트(브라우저) 수집은 보강 예정. 타겟 `next.config`/`tsconfig` 를 잠깐 수정(자동 복원)한다.
+```mermaid
+flowchart TD
+    subgraph prep["준비 (1회)"]
+        H["하니스 생성<br/>config · setup · teardown · <b>fixtures.ts</b>"]
+        P["임시 패치 (백업·복원)<br/>소스맵 · tsconfig · <b>spec import→fixture</b>"]
+        B["next build<br/>.next 초기화 · production"]
+        S["next start 직접 실행<br/>NODE_V8_COVERAGE=서버 · --inspect"]
+        H --> P --> B --> S
+    end
+    S --> R["⚖️ Playwright 로 .qa/tests 실행"]
+    R --> SV["서버 수집<br/>요청마다 실행된 코드<br/>(API·인증·검증 로직)"]
+    R --> CL["클라 수집 (fixture)<br/>collectClientCoverage<br/>outputDir/.cache 에 저장 ⚠️"]
+    SV --> F["finalizeCoverage<br/>소스맵 remap: turbopack:///src → 실파일<br/>서버+클라 <b>병합</b>"]
+    CL --> F
+    F --> J["coverage-final.json → 라인 %"]
+    J --> RS["패치 전부 복원 (side-effect 0)"]
+
+    F -.잡힘.-> Y["✅ 클라 컴포넌트(90~100%)<br/>✅ 서버 API/로직(요청 실행분)"]
+    F -.구조상 못잼.-> N["❌ static prerender<br/>page/layout · sitemap/robots · icon/og<br/>(빌드 때 렌더 → 실행 계측 밖)"]
+    classDef det fill:#ecfdf5,stroke:#10b981,color:#064e3b
+    classDef warn fill:#fffbeb,stroke:#f59e0b,color:#78350f
+    class R,SV,F det
+    class N warn
+```
+
+> ⚠️ **fixture 함정(직접 겪음):** `collectClientCoverage` 는 `config.outputDir` 를 안 넘기면 클라 커버리지를 **수집만 하고 저장을 통째로 스킵**한다(내부: `cacheDir = outputDir ? … : undefined`). 그래서 fixture 는 반드시 config 의 `nextcov.outputDir` 와 **같은 값**을 넘겨야 컴포넌트가 잡힌다. (이걸 안 넘겨서 한동안 컴포넌트가 전부 0% → 서버만 잡혀 16% 천장이었다. 넘긴 뒤 16% → 55%.)
+
+> 커버리지가 낮으면 = **테스트가 아직 부족**하거나(→ 모듈·auth·시드 추가하면 오름), **static 껍데기**라 원리상 못 재는 것(→ 무시). 커버리지 % 자체보다 흐름 통과·단언 강도가 더 정확한 품질 신호다.
+> 제약: production 빌드라 수 분 소요. 타겟 `next.config`/`tsconfig`/spec 을 잠깐 수정(자동 복원)한다.
 
 ---
 
