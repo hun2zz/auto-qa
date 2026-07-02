@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react'
-import type { TraceChecklistGroup, TraceRow, TraceState } from '@shared/types'
+import type { CodeTestGroup, TestStatus, TraceChecklistGroup, TraceRow, TraceState } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState } from './common'
@@ -16,6 +16,13 @@ const STATE_META: Record<TraceState, { label: string; dot: string; text: string 
 }
 
 const ORDER: TraceState[] = ['failing', 'no-test', 'no-checklist', 'not-run', 'draft', 'verified']
+
+/** 코드 트랙 테스트 상태(TestStatus) → 추적성 상태(TraceState) 매핑 (필터 일관성용). */
+function testStateOf(s: TestStatus): TraceState {
+  if (s === 'passed') return 'verified'
+  if (s === 'failed' || s === 'timedOut') return 'failing'
+  return 'not-run' // skipped
+}
 
 export function TraceabilityPanel(): JSX.Element {
   const project = useStore((s) => s.project)
@@ -63,11 +70,13 @@ function TraceabilitySection(): JSX.Element {
   const s = report.summary
   const scopeRows = report.rows.filter((r) => r.track === 'scope')
   const codeRows = report.rows.filter((r) => r.track === 'code')
-  // 필터 칩 카운트 대상: 항목 그룹이 있으면 '항목' 상태 + 코드행, 없으면 기존 행
-  const filterable: TraceState[] =
-    report.checklistGroups.length > 0
-      ? [...report.checklistGroups.flatMap((g) => g.items.map((i) => i.state)), ...codeRows.map((r) => r.state)]
-      : report.rows.map((r) => r.state)
+  // 필터 칩 카운트 대상: 항목(체크리스트) 상태 + 코드 트랙 '테스트 단위' 상태
+  const codeTestStates = report.codeGroups.flatMap((g) => g.tests.map((t) => testStateOf(t.status)))
+  const filterable: TraceState[] = [
+    ...report.checklistGroups.flatMap((g) => g.items.map((i) => i.state)),
+    ...codeTestStates
+  ]
+  void codeRows
   const shown = (rows: TraceRow[]): TraceRow[] =>
     filter === 'all' ? rows : rows.filter((r) => r.state === filter)
   const sortRows = (rows: TraceRow[]): TraceRow[] =>
@@ -137,13 +146,16 @@ function TraceabilitySection(): JSX.Element {
         />
       )}
 
-      {/* 코드 트랙 */}
-      {codeRows.length > 0 && (
-        <TraceTable
-          title="코드 트랙 (요구사항 링크 없는 code-*.spec)"
-          rows={sortRows(shown(codeRows))}
-          showRequirement={false}
-        />
+      {/* 코드 트랙 — 테스트 단위 (합격기준 없음 → 테스트 제목이 단위) */}
+      {report.codeGroups.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h3 className="text-[12px] font-medium text-muted">
+            코드 트랙 — 테스트 단위 (요구사항 링크 없는 code-*.spec)
+          </h3>
+          {report.codeGroups.map((g) => (
+            <CodeGroupCard key={g.file} group={g} filter={filter} />
+          ))}
+        </div>
       )}
     </div>
   )
@@ -214,6 +226,54 @@ function ChecklistGroupCard({
                   </div>
                 </div>
                 <span className={`shrink-0 text-[11px] font-medium ${m.text}`}>{m.label}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </article>
+  )
+}
+
+function CodeGroupCard({
+  group,
+  filter
+}: {
+  group: CodeTestGroup
+  filter: TraceState | 'all'
+}): JSX.Element {
+  const tests = filter === 'all' ? group.tests : group.tests.filter((t) => testStateOf(t.status) === filter)
+  if (filter !== 'all' && tests.length === 0) return <></>
+  return (
+    <article className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+        <h4 className="truncate font-mono text-[12px] text-text">{group.file}</h4>
+        <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
+          <span className={group.failed === 0 ? 'text-ok' : 'text-muted'}>
+            {group.passed}/{group.total} 통과
+          </span>
+          {group.failed > 0 && <span className="text-bad">· 실패 {group.failed}</span>}
+          {group.skipped > 0 && <span className="text-muted">· 스킵 {group.skipped}</span>}
+        </div>
+      </div>
+      {group.total === 0 ? (
+        <p className="px-4 py-3 text-center text-[11.5px] text-muted">실행 기록 없음 (아직 안 돌림)</p>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {tests.map((t, i) => {
+            const st = testStateOf(t.status)
+            const m = STATE_META[st]
+            return (
+              <div key={i} className="flex items-center gap-3 px-4 py-2">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${m.dot}`} />
+                <span className="min-w-0 flex-1 truncate text-[12.5px] text-text">{t.title}</span>
+                <span className={`shrink-0 text-[11px] font-medium ${m.text}`}>
+                  {t.status === 'passed'
+                    ? '통과'
+                    : t.status === 'skipped'
+                      ? '스킵'
+                      : '실패'}
+                </span>
               </div>
             )
           })}

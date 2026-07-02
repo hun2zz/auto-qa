@@ -437,11 +437,23 @@ export interface TraceChecklistGroup {
   noTest: number
 }
 
+/** 코드 트랙 spec 파일 하나를 '테스트 단위'로 펼친 그룹 (합격기준 없음 → 테스트 제목이 단위) */
+export interface CodeTestGroup {
+  file: string
+  passed: number
+  failed: number
+  skipped: number
+  total: number
+  tests: Array<{ title: string; status: TestStatus; line?: number }>
+}
+
 export interface TraceabilityReport {
   generatedAt: string
   rows: TraceRow[]
   /** 항목 단위 뷰 (체크리스트별). 파일 단위 rows 를 대체하는 QA 핵심 화면. */
   checklistGroups: TraceChecklistGroup[]
+  /** 코드 트랙 테스트 단위 뷰 (code-*.spec 파일별로 테스트 펼침) */
+  codeGroups: CodeTestGroup[]
   summary: {
     requirements: number
     checklists: number

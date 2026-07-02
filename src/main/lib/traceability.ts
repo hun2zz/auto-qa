@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type {
   Checklist,
+  CodeTestGroup,
   RunReport,
   TraceabilityReport,
   TraceChecklistGroup,
@@ -165,8 +166,18 @@ export async function getTraceability(projectPath: string): Promise<Traceability
   const specFiles = existsSync(dir)
     ? (await fs.readdir(dir)).filter((f) => f.endsWith('.spec.ts'))
     : []
+  // 마지막 실행의 테스트를 파일(basename)별로 묶어 둔다 (코드 트랙 테스트 단위 펼침용)
+  const testsByFile = new Map<string, RunReport['results']>()
+  for (const r of report?.results ?? []) {
+    const f = r.file ? basename(r.file) : null
+    if (!f) continue
+    const arr = testsByFile.get(f) ?? []
+    arr.push(r)
+    testsByFile.set(f, arr)
+  }
+  const codeGroups: CodeTestGroup[] = []
   for (const f of specFiles.sort()) {
-    if (linkedSpecs.has(f)) continue // 이미 scope 행으로 표시됨
+    if (linkedSpecs.has(f)) continue // 이미 scope(항목) 뷰로 표시됨
     const run = runMap.get(f) ?? null
     rows.push({
       track: 'code',
@@ -177,6 +188,20 @@ export async function getTraceability(projectPath: string): Promise<Traceability
       specFile: f,
       run,
       state: stateFromRun(run)
+    })
+    // 테스트 단위 펼침
+    const tests = (testsByFile.get(f) ?? []).map((r) => ({
+      title: r.title,
+      status: r.status,
+      line: r.line
+    }))
+    codeGroups.push({
+      file: f,
+      total: tests.length,
+      passed: tests.filter((t) => t.status === 'passed').length,
+      failed: tests.filter((t) => t.status === 'failed' || t.status === 'timedOut').length,
+      skipped: tests.filter((t) => t.status === 'skipped').length,
+      tests
     })
   }
 
@@ -191,6 +216,7 @@ export async function getTraceability(projectPath: string): Promise<Traceability
     generatedAt: new Date().toISOString(),
     rows,
     checklistGroups,
+    codeGroups,
     summary: {
       requirements: requirements.length,
       checklists: checklists.length,
