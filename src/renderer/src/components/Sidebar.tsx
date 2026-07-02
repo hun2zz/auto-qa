@@ -1,31 +1,20 @@
-import type { JSX, ReactNode } from 'react'
+import type { JSX } from 'react'
 import { useStore, type StepId } from '../store'
 import { Button } from './Button'
-import {
-  FolderIcon,
-  DocIcon,
-  ChecklistIcon,
-  FlaskIcon,
-  SparkleIcon,
-  PlayIcon,
-  GearIcon,
-  CheckIcon,
-  TrashIcon
-} from './icons'
+import { FolderIcon, SparkleIcon, GearIcon, CheckIcon, TrashIcon } from './icons'
 
 interface StepDef {
   id: StepId
   index: number
   label: string
-  icon: ReactNode
 }
 
 const STEPS: StepDef[] = [
-  { id: 'requirements', index: 1, label: '요구사항', icon: <DocIcon /> },
-  { id: 'checklists', index: 2, label: '체크리스트', icon: <ChecklistIcon /> },
-  { id: 'tests', index: 3, label: '테스트 생성', icon: <FlaskIcon /> },
-  { id: 'run', index: 4, label: '실행 & 검증', icon: <PlayIcon /> },
-  { id: 'coverage', index: 5, label: '코드 커버리지', icon: <FlaskIcon /> }
+  { id: 'requirements', index: 1, label: '요구사항' },
+  { id: 'checklists', index: 2, label: '체크리스트' },
+  { id: 'tests', index: 3, label: '테스트 생성' },
+  { id: 'run', index: 4, label: '실행 & 검증' },
+  { id: 'coverage', index: 5, label: '코드 커버리지' }
 ]
 
 type StepState = 'done' | 'active' | 'idle'
@@ -137,14 +126,6 @@ export function Sidebar(): JSX.Element {
               ].join(' ')}
             >
               <StatusDot state={state} index={step.index} />
-              <span
-                className={[
-                  'flex h-5 w-5 items-center justify-center',
-                  state === 'active' ? 'text-text' : ''
-                ].join(' ')}
-              >
-                {step.icon}
-              </span>
               <span className="text-sm font-medium">{step.label}</span>
             </button>
           )
