@@ -1,5 +1,12 @@
 import { useState, type JSX } from 'react'
-import type { CodeTestGroup, TestStatus, TraceChecklistGroup, TraceRow, TraceState } from '@shared/types'
+import type {
+  ChangeImpactReport,
+  CodeTestGroup,
+  TestStatus,
+  TraceChecklistGroup,
+  TraceRow,
+  TraceState
+} from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState } from './common'
@@ -51,13 +58,18 @@ export function TraceabilityPanel(): JSX.Element {
 
 function TraceabilitySection(): JSX.Element {
   const report = useStore((s) => s.traceability)
+  const impact = useStore((s) => s.changeImpact)
   const reload = useStore((s) => s.loadTraceability)
   const [filter, setFilter] = useState<TraceState | 'all'>('all')
+
+  // 변경 영향으로 '재테스트 필수'가 된 spec 집합
+  const staleSpecs = new Set((impact?.affectedSpecs ?? []).map((a) => a.spec))
 
   if (!report || report.rows.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         <RefreshBar onReload={reload} />
+        {impact && <ChangeImpactBanner impact={impact} />}
         <EmptyState
           icon={<GridIcon width={26} height={26} />}
           title="아직 추적할 산출물이 없습니다"
@@ -85,6 +97,7 @@ function TraceabilitySection(): JSX.Element {
   return (
     <div className="flex flex-col gap-4">
       <RefreshBar onReload={reload} />
+      {impact && <ChangeImpactBanner impact={impact} />}
 
       {/* 요약 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -133,7 +146,12 @@ function TraceabilitySection(): JSX.Element {
             개발범위 — 합격기준 항목별 검증 (요구사항 → 항목 → 테스트 → 결과)
           </h3>
           {report.checklistGroups.map((g) => (
-            <ChecklistGroupCard key={g.checklistId} group={g} filter={filter} />
+            <ChecklistGroupCard
+              key={g.checklistId}
+              group={g}
+              filter={filter}
+              retest={!!g.specFile && staleSpecs.has(g.specFile)}
+            />
           ))}
         </div>
       )}
@@ -153,7 +171,7 @@ function TraceabilitySection(): JSX.Element {
             코드 트랙 — 테스트 단위 (요구사항 링크 없는 code-*.spec)
           </h3>
           {report.codeGroups.map((g) => (
-            <CodeGroupCard key={g.file} group={g} filter={filter} />
+            <CodeGroupCard key={g.file} group={g} filter={filter} retest={staleSpecs.has(g.file)} />
           ))}
         </div>
       )}
@@ -174,23 +192,81 @@ function RefreshBar({ onReload }: { onReload: () => void }): JSX.Element {
   )
 }
 
+function RetestBadge(): JSX.Element {
+  return (
+    <span className="shrink-0 rounded bg-bad/15 px-1.5 py-0.5 text-[10px] font-semibold text-bad ring-1 ring-bad/30">
+      ⚠ 재테스트 필수
+    </span>
+  )
+}
+
+function ChangeImpactBanner({ impact }: { impact: ChangeImpactReport }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  if (!impact.stale) {
+    return (
+      <div className="rounded-xl border border-ok/30 bg-ok/10 px-4 py-2.5 text-[12px] text-ok">
+        ✓ 마지막 실행 이후 변경된 소스 없음 — 결과가 최신입니다.
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <span className="text-[13px] font-medium text-warn">
+          ⚠️ 마지막 실행 이후 소스 {impact.changedFiles.length}개 변경됨 → 재테스트 필요
+          {impact.affectedSpecs.length > 0 && ` · 영향 테스트 ${impact.affectedSpecs.length}개`}
+        </span>
+        <span className="text-[11px] text-muted">{open ? '접기' : '자세히'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 border-t border-warn/20 pt-2">
+          <p className="mb-1 text-[11px] text-muted">변경된 파일:</p>
+          <ul className="space-y-0.5">
+            {impact.changedFiles.map((f) => (
+              <li key={f} className="font-mono text-[11px] text-text/80">
+                {f}
+                {(() => {
+                  const specs = impact.affectedSpecs.filter((a) => a.changedFiles.includes(f))
+                  return specs.length ? (
+                    <span className="text-muted"> → {specs.map((s) => s.spec).join(', ')}</span>
+                  ) : (
+                    <span className="text-muted"> (연결된 테스트 없음)</span>
+                  )
+                })()}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ChecklistGroupCard({
   group,
-  filter
+  filter,
+  retest
 }: {
   group: TraceChecklistGroup
   filter: TraceState | 'all'
+  retest?: boolean
 }): JSX.Element {
   const items = filter === 'all' ? group.items : group.items.filter((i) => i.state === filter)
   const pct = group.total ? Math.round((group.verified / group.total) * 100) : 0
   return (
     <article className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-        <div className="min-w-0">
-          <h4 className="truncate text-[13px] font-medium text-text">{group.title}</h4>
-          {group.requirement && (
-            <p className="truncate text-[11px] text-muted">요구사항: {group.requirement}</p>
-          )}
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0">
+            <h4 className="truncate text-[13px] font-medium text-text">{group.title}</h4>
+            {group.requirement && (
+              <p className="truncate text-[11px] text-muted">요구사항: {group.requirement}</p>
+            )}
+          </div>
+          {retest && <RetestBadge />}
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
           <span className={group.verified === group.total ? 'text-ok' : 'text-muted'}>
@@ -237,17 +313,22 @@ function ChecklistGroupCard({
 
 function CodeGroupCard({
   group,
-  filter
+  filter,
+  retest
 }: {
   group: CodeTestGroup
   filter: TraceState | 'all'
+  retest?: boolean
 }): JSX.Element {
   const tests = filter === 'all' ? group.tests : group.tests.filter((t) => testStateOf(t.status) === filter)
   if (filter !== 'all' && tests.length === 0) return <></>
   return (
     <article className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-        <h4 className="truncate font-mono text-[12px] text-text">{group.file}</h4>
+        <div className="flex min-w-0 items-center gap-2">
+          <h4 className="truncate font-mono text-[12px] text-text">{group.file}</h4>
+          {retest && <RetestBadge />}
+        </div>
         <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
           <span className={group.failed === 0 ? 'text-ok' : 'text-muted'}>
             {group.passed}/{group.total} 통과

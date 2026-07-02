@@ -347,6 +347,30 @@ export interface ChecklistItem {
   techniqueTags: string[]
 }
 
+// ----------------------------------------------------------------------------
+// 변경 영향 분석 (TIA): 마지막 실행 이후 바뀐 소스 → 영향받는 테스트를 표시(재테스트 필수).
+// 에디터에서 코드를 고치면 파일 mtime 이 바뀌고, 그걸 마지막 실행 시각과 비교한다.
+// ----------------------------------------------------------------------------
+
+/** 변경 파일이 영향을 주는 spec (그 파일을 커버한다고 선언/언급) */
+export interface AffectedSpec {
+  /** spec 파일명 (basename) */
+  spec: string
+  /** 이 spec 이 커버하는(=변경된) 소스 파일들 */
+  changedFiles: string[]
+}
+
+export interface ChangeImpactReport {
+  /** 마지막 실행 시각(ISO). 없으면 null */
+  lastRunAt: string | null
+  /** 마지막 실행 이후 변경된 소스 파일 (프로젝트 상대경로) */
+  changedFiles: string[]
+  /** 재테스트 필요 여부 (변경 파일 있음) */
+  stale: boolean
+  /** 변경의 영향을 받는 spec 들 (Phase 2 매핑). 재테스트 필수 대상 */
+  affectedSpecs: AffectedSpec[]
+}
+
 export type TestStatus = 'passed' | 'failed' | 'skipped' | 'timedOut'
 
 /** 개별 테스트 결과 */
@@ -544,6 +568,7 @@ export const IPC = {
   getCodeCoverage: 'coverage:code:get',
   runCoverageLoop: 'coverage:code:loop',
   getTraceability: 'trace:get',
+  getChangeImpact: 'trace:changeImpact',
   // auth
   getAuthStatus: 'auth:status',
   setAuthSecret: 'auth:setSecret',
@@ -699,6 +724,8 @@ export interface AutoQaApi {
 
   /** [추적성] 요구사항→체크리스트→테스트→실행을 조인한 매트릭스 (결정적, AI 미사용) */
   getTraceability(projectPath: string): Promise<TraceabilityReport>
+  /** [변경 영향] 마지막 실행 이후 바뀐 소스 → 영향받는 테스트 (재테스트 필수) */
+  getChangeImpact(projectPath: string): Promise<ChangeImpactReport>
 
   // --- 로그인(auth) ---
   getAuthStatus(projectPath: string): Promise<AuthStatus>

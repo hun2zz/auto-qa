@@ -46,6 +46,7 @@ const api: AutoQaApi = {
   mutationScore: (p, maxMutants, scope) => ipcRenderer.invoke(IPC.mutationScore, p, maxMutants, scope),
   getLastReport: (p) => ipcRenderer.invoke(IPC.getLastReport, p),
   getTraceability: (p) => ipcRenderer.invoke(IPC.getTraceability, p),
+  getChangeImpact: (p) => ipcRenderer.invoke(IPC.getChangeImpact, p),
 
   auditCoverage: (p, requirementName, kind) =>
     ipcRenderer.invoke(IPC.auditCoverage, p, requirementName, kind),

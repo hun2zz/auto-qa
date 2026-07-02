@@ -21,7 +21,8 @@ import type {
   EvalResult,
   TestFile,
   TestScope,
-  TraceabilityReport
+  TraceabilityReport,
+  ChangeImpactReport
 } from '@shared/types'
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
@@ -65,6 +66,7 @@ interface AppState {
   coverageReports: CoverageReport[]
   codeCoverage: CodeCoverageReport | null
   traceability: TraceabilityReport | null
+  changeImpact: ChangeImpactReport | null
 
   // ── UI 상태 ────────────────────────────────────────────────────
   activeStep: StepId
@@ -192,6 +194,7 @@ export const useStore = create<AppState>((set, get) => {
     coverageReports: [],
     codeCoverage: null,
     traceability: null,
+    changeImpact: null,
     knownWorld: '',
     assertionReport: null,
     selectorValidation: null,
@@ -667,8 +670,12 @@ export const useStore = create<AppState>((set, get) => {
     loadTraceability: async () => {
       const { project } = get()
       if (!project) return
-      const traceability = await window.api.getTraceability(project.path).catch(() => null)
-      set({ traceability })
+      // 추적성 + 변경 영향(재테스트 필요)을 함께 갱신
+      const [traceability, changeImpact] = await Promise.all([
+        window.api.getTraceability(project.path).catch(() => null),
+        window.api.getChangeImpact(project.path).catch(() => null)
+      ])
+      set({ traceability, changeImpact })
     },
 
     runCodeCoverage: async () => {
