@@ -61,6 +61,7 @@ export function TraceabilitySection(): JSX.Element {
   const impact = useStore((s) => s.changeImpact)
   const reload = useStore((s) => s.loadTraceability)
   const [filter, setFilter] = useState<TraceState | 'all'>('all')
+  const [track, setTrack] = useState<'scope' | 'code'>('scope')
 
   // 변경 영향으로 '재테스트 필수'가 된 spec 집합
   const staleSpecs = new Set((impact?.affectedSpecs ?? []).map((a) => a.spec))
@@ -82,13 +83,19 @@ export function TraceabilitySection(): JSX.Element {
   const s = report.summary
   const scopeRows = report.rows.filter((r) => r.track === 'scope')
   const codeRows = report.rows.filter((r) => r.track === 'code')
-  // 필터 칩 카운트 대상: 항목(체크리스트) 상태 + 코드 트랙 '테스트 단위' 상태
-  const codeTestStates = report.codeGroups.flatMap((g) => g.tests.map((t) => testStateOf(t.status)))
-  const filterable: TraceState[] = [
-    ...report.checklistGroups.flatMap((g) => g.items.map((i) => i.state)),
-    ...codeTestStates
-  ]
   void codeRows
+
+  // 트랙별 존재 여부 → 탭 구성
+  const hasScope = report.checklistGroups.length > 0 || scopeRows.length > 0
+  const hasCode = report.codeGroups.length > 0
+  const activeTrack: 'scope' | 'code' = hasScope && hasCode ? track : hasScope ? 'scope' : 'code'
+  const scopeCount = report.checklistGroups.reduce((n, g) => n + g.items.length, 0) || scopeRows.length
+  const codeCount = report.codeGroups.reduce((n, g) => n + g.tests.length, 0)
+
+  // 필터 칩 카운트: 현재 보고 있는 트랙 기준
+  const codeTestStates = report.codeGroups.flatMap((g) => g.tests.map((t) => testStateOf(t.status)))
+  const scopeStates = report.checklistGroups.flatMap((g) => g.items.map((i) => i.state))
+  const filterable: TraceState[] = activeTrack === 'scope' ? scopeStates : codeTestStates
   const shown = (rows: TraceRow[]): TraceRow[] =>
     filter === 'all' ? rows : rows.filter((r) => r.state === filter)
   const sortRows = (rows: TraceRow[]): TraceRow[] =>
@@ -122,6 +129,18 @@ export function TraceabilitySection(): JSX.Element {
         />
       </div>
 
+      {/* 트랙 탭 (개발범위 / 코드) — 둘 다 있을 때만 노출 */}
+      {hasScope && hasCode && (
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+          <TrackTab active={activeTrack === 'scope'} onClick={() => setTrack('scope')}>
+            개발범위 항목 {scopeCount}
+          </TrackTab>
+          <TrackTab active={activeTrack === 'code'} onClick={() => setTrack('code')}>
+            코드 테스트 {codeCount}
+          </TrackTab>
+        </div>
+      )}
+
       {/* 필터 */}
       <div className="flex flex-wrap items-center gap-1.5">
         <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
@@ -140,7 +159,7 @@ export function TraceabilitySection(): JSX.Element {
       </div>
 
       {/* 개발범위 — 항목(합격기준) 단위 검증 (QA 핵심 뷰) */}
-      {report.checklistGroups.length > 0 && (
+      {activeTrack === 'scope' && report.checklistGroups.length > 0 && (
         <div className="flex flex-col gap-3">
           <h3 className="text-[12px] font-medium text-muted">
             개발범위 — 합격기준 항목별 검증 (요구사항 → 항목 → 테스트 → 결과)
@@ -156,7 +175,7 @@ export function TraceabilitySection(): JSX.Element {
         </div>
       )}
       {/* 체크리스트 없이 파일만 있는 경우 폴백 (구 파일단위 뷰) */}
-      {report.checklistGroups.length === 0 && scopeRows.length > 0 && (
+      {activeTrack === 'scope' && report.checklistGroups.length === 0 && scopeRows.length > 0 && (
         <TraceTable
           title="개발범위 (요구사항 → 체크리스트 → 테스트)"
           rows={sortRows(shown(scopeRows))}
@@ -165,7 +184,7 @@ export function TraceabilitySection(): JSX.Element {
       )}
 
       {/* 코드 트랙 — 테스트 단위 (합격기준 없음 → 테스트 제목이 단위) */}
-      {report.codeGroups.length > 0 && (
+      {activeTrack === 'code' && report.codeGroups.length > 0 && (
         <div className="flex flex-col gap-3">
           <h3 className="text-[12px] font-medium text-muted">
             코드 트랙 — 테스트 단위 (요구사항 링크 없는 code-*.spec)
@@ -466,6 +485,27 @@ function FilterChip({
         active
           ? 'border-brand/40 bg-brand/10 text-text'
           : 'border-border bg-surface text-muted hover:text-text'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function TrackTab({
+  active,
+  onClick,
+  children
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
+        active ? 'bg-brand/15 text-text ring-1 ring-brand/30' : 'text-muted hover:text-text'
       }`}
     >
       {children}
