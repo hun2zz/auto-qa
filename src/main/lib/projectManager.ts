@@ -490,13 +490,20 @@ export async function generateChecklist(
   }
 
   // 2) 모듈마다 체크리스트 — 동시 실행으로 가속 (각 AI 호출이 독립적)
-  const CONCURRENCY = 4
-  onProgress({
-    phase: 'checklist',
-    message: `${modules.length}개 모듈 → 체크리스트 생성 (동시 ${CONCURRENCY}개)`
-  })
+  const total = modules.length
+  const CONCURRENCY = Math.min(4, total)
   let done = 0
+  let running = 0
+  const tick = (extra?: string): void =>
+    onProgress({
+      phase: 'checklist',
+      message: `체크리스트 생성 — 완료 ${done}/${total} · 동시 진행 ${running}개 (최대 ${CONCURRENCY})${extra ? ` · ${extra}` : ''}`,
+      fraction: done / total
+    })
+  onProgress({ phase: 'checklist', message: `${total}개 모듈 → 체크리스트 생성 시작 (동시 ${CONCURRENCY}개 병렬)` })
   const results = await mapLimit(modules, CONCURRENCY, async (m) => {
+    running++
+    tick()
     try {
       const c = await genOneChecklist(projectPath, {
         checklistId: `${baseId}__${slug(m.id)}`,
@@ -506,20 +513,14 @@ export async function generateChecklist(
         module: m,
         onProgress
       })
+      running--
       done++
-      onProgress({
-        phase: 'checklist',
-        message: `완료 ${done}/${modules.length}: ${m.title}`,
-        fraction: done / modules.length
-      })
+      tick(m.title)
       return c
     } catch (e) {
+      running--
       done++
-      onProgress({
-        phase: 'checklist',
-        message: `모듈 실패 ${done}/${modules.length}: ${m.title} — ${(e as Error).message}`,
-        fraction: done / modules.length
-      })
+      tick(`실패: ${m.title} — ${(e as Error).message}`)
       return null
     }
   })
@@ -739,21 +740,28 @@ export async function generateAllTests(
     onProgress({ phase: 'tests', message: '생성할 대상이 없습니다 (승인됐고 spec 없는 체크리스트 없음).' })
     return all
   }
-  const CONCURRENCY = 6
-  onProgress({ phase: 'tests', message: `${targets.length}개 테스트 생성 (동시 ${CONCURRENCY}개)` })
+  const total = targets.length
+  const CONCURRENCY = Math.min(6, total)
   let done = 0
+  let running = 0
+  const tick = (): void =>
+    onProgress({
+      phase: 'tests',
+      message: `테스트 생성 — 완료 ${done}/${total} · 동시 진행 ${running}개 (최대 ${CONCURRENCY})`,
+      fraction: done / total
+    })
+  onProgress({ phase: 'tests', message: `${total}개 테스트 생성 시작 (동시 ${CONCURRENCY}개 병렬)` })
   await mapLimit(targets, CONCURRENCY, async (c) => {
+    running++
+    tick()
     try {
       await generateTests(projectPath, c.id, baseURL, onProgress)
     } catch (e) {
       onProgress({ phase: 'tests', message: `실패: ${c.title} — ${(e as Error).message}` })
     } finally {
+      running--
       done++
-      onProgress({
-        phase: 'tests',
-        message: `완료 ${done}/${targets.length}`,
-        fraction: done / targets.length
-      })
+      tick()
     }
   })
   return listChecklists(projectPath)
