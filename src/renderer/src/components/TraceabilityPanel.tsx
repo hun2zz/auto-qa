@@ -56,7 +56,7 @@ export function TraceabilityPanel(): JSX.Element {
   )
 }
 
-function TraceabilitySection(): JSX.Element {
+export function TraceabilitySection(): JSX.Element {
   const report = useStore((s) => s.traceability)
   const impact = useStore((s) => s.changeImpact)
   const reload = useStore((s) => s.loadTraceability)

@@ -27,7 +27,7 @@ import type {
 import { DEFAULT_QA_CONFIG } from '@shared/types'
 
 /** 파이프라인 단계 식별자 */
-export type StepId = 'requirements' | 'checklists' | 'tests' | 'run' | 'coverage' | 'traceability'
+export type StepId = 'requirements' | 'checklists' | 'tests' | 'run' | 'coverage'
 
 /** 콘솔에 쌓이는 진행 로그 한 줄 */
 export interface LogLine {
@@ -599,6 +599,8 @@ export const useStore = create<AppState>((set, get) => {
       } else {
         get().pushToast('success', isRerun ? '재실행한 테스트를 모두 통과했습니다' : '모든 테스트를 통과했습니다')
       }
+      // 병합 뷰(실행 & 검증)의 추적성·변경영향을 새 실행 결과로 갱신
+      void get().loadTraceability()
     },
 
     runTests: async (only) => {
@@ -757,6 +759,7 @@ export const useStore = create<AppState>((set, get) => {
       await withBusy('healAndRerun', async () => {
         const result = await window.api.healAndRerun(project.path, only)
         set({ lastReport: result.report, lastHeal: result })
+        void get().loadTraceability()
         if (result.healed > 0) {
           get().pushToast('success', `AI가 ${result.healed}개 수정 후 재실행했습니다`)
         } else if (result.attempted > 0) {

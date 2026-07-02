@@ -6,6 +6,7 @@ const SCOPE_LABEL: Record<TestScope, string> = { all: '전체', scope: '개발�
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
 import { PlayIcon, AlertIcon, ChevronIcon, SparkleIcon } from './icons'
+import { TraceabilitySection } from './TraceabilityPanel'
 
 export function RunPanel(): JSX.Element {
   const lastReport = useStore((s) => s.lastReport)
@@ -70,8 +71,8 @@ export function RunPanel(): JSX.Element {
     <>
       <PanelHeader
         step={4}
-        title="실행 & 리포트"
-        desc="dev 서버를 구동하고 Playwright 테스트를 결정적으로 실행합니다."
+        title="실행 & 검증"
+        desc="Playwright 결정적 실행 + 항목/테스트 단위 추적성·변경영향·품질 검증(네거티브·flaky·mutation)을 한 곳에서."
         action={lastReport ? headerAction : undefined}
       />
       <PanelBody>
@@ -426,7 +427,7 @@ const isCodeResult = (r: TestResult): boolean => (r.file ?? '').startsWith('code
 
 function ReportView({ report }: { report: RunReport }): JSX.Element {
   const [track, setTrack] = useState<'all' | 'scope' | 'code'>('all')
-  const startedAt = new Date(report.startedAt)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   const scopeResults = report.results.filter((r) => !isCodeResult(r))
   const codeResults = report.results.filter((r) => isCodeResult(r))
@@ -489,7 +490,10 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
         </div>
       )}
 
-      {/* 트랙 탭 (두 트랙 결과가 다 있을 때만) */}
+      {/* ── 주 결과 뷰: 항목/테스트 단위 추적성 + 변경영향(재테스트) ── */}
+      <TraceabilitySection />
+
+      {/* 트랙 선택 (아래 품질 도구·상세목록의 대상 스코프) */}
       {hasBoth && (
         <div className="flex gap-1 rounded-xl border border-border bg-surface-2/40 p-1">
           <ReportTab active={track === 'all'} onClick={() => setTrack('all')} label="전체" count={report.results.length} />
@@ -498,41 +502,25 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
         </div>
       )}
 
-      {/* 요약 통계 (선택 트랙 기준) */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="전체" value={stat.total} tone="brand" />
-        <StatCard label="통과" value={stat.passed} tone="ok" />
-        <StatCard label="실패" value={stat.failed} tone="bad" />
-        <StatCard label="건너뜀" value={stat.skipped} tone="muted" />
-      </div>
-
-      {/* 메타 + 통과율 바 */}
-      <div className="rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 flex items-center justify-between text-xs text-muted">
-          <span>
-            {startedAt.toLocaleString('ko-KR')} · {(report.durationMs / 1000).toFixed(1)}초 소요
-          </span>
-          <span className="font-medium text-text">통과율 {passRate}%</span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-          <div
-            className="h-full rounded-full bg-ok transition-all duration-500"
-            style={{ width: `${passRate}%` }}
-          />
-        </div>
-      </div>
-
-      {/* self-healing */}
+      {/* 품질 검증 도구 */}
       <SelfHealing report={report} track={track} />
-
-      {/* negative-control: 기대값 변형 검증 */}
       <NegativeControlBlock scope={track} />
       <FlakyBlock scope={track} />
       <MutationScoreBlock />
 
-      {/* 결과 목록 (선택 트랙) + 체크박스 다중 선택 실행 */}
-      {shown.length > 0 && (
-        <div className="space-y-2">
+      {/* ── 접이식: 상세 실행 결과 + 선택 실행/힐링 (추적성이 주 뷰라 접어둠) ── */}
+      <div className="rounded-xl border border-border bg-surface">
+        <button
+          onClick={() => setDetailOpen((v) => !v)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left"
+        >
+          <span className="text-[12px] font-medium text-muted">
+            상세 실행 결과 · 선택 실행/힐링 — {stat.passed}✓ {stat.failed}✗ {stat.skipped}⤼ (통과율 {passRate}%)
+          </span>
+          <span className="text-[11px] text-muted">{detailOpen ? '접기' : '펼치기'}</span>
+        </button>
+        {detailOpen && (
+          <div className="space-y-2 border-t border-border p-4">
           <div className="flex items-center justify-between gap-3">
             <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
               <input
@@ -580,8 +568,9 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
               />
             )
           })}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -613,30 +602,6 @@ function ReportTab({
         {count}
       </span>
     </button>
-  )
-}
-
-const STAT_TONES: Record<string, string> = {
-  brand: 'text-brand-soft',
-  ok: 'text-ok',
-  bad: 'text-bad',
-  muted: 'text-muted'
-}
-
-function StatCard({
-  label,
-  value,
-  tone
-}: {
-  label: string
-  value: number
-  tone: keyof typeof STAT_TONES
-}): JSX.Element {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <p className="text-xs text-muted">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${STAT_TONES[tone]}`}>{value}</p>
-    </div>
   )
 }
 

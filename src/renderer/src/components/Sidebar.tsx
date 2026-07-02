@@ -9,8 +9,7 @@ import {
   PlayIcon,
   GearIcon,
   CheckIcon,
-  TrashIcon,
-  GridIcon
+  TrashIcon
 } from './icons'
 
 interface StepDef {
@@ -24,9 +23,8 @@ const STEPS: StepDef[] = [
   { id: 'requirements', index: 1, label: '요구사항', icon: <DocIcon /> },
   { id: 'checklists', index: 2, label: '체크리스트', icon: <ChecklistIcon /> },
   { id: 'tests', index: 3, label: '테스트 생성', icon: <FlaskIcon /> },
-  { id: 'run', index: 4, label: '실행 & 리포트', icon: <PlayIcon /> },
-  { id: 'coverage', index: 5, label: '코드 커버리지', icon: <FlaskIcon /> },
-  { id: 'traceability', index: 6, label: '추적성', icon: <GridIcon /> }
+  { id: 'run', index: 4, label: '실행 & 검증', icon: <PlayIcon /> },
+  { id: 'coverage', index: 5, label: '코드 커버리지', icon: <FlaskIcon /> }
 ]
 
 type StepState = 'done' | 'active' | 'idle'
@@ -44,7 +42,6 @@ export function Sidebar(): JSX.Element {
   const checklists = useStore((s) => s.checklists)
   const lastReport = useStore((s) => s.lastReport)
   const codeCoverage = useStore((s) => s.codeCoverage)
-  const traceability = useStore((s) => s.traceability)
 
   // 각 단계가 "완료"로 보일 조건 (가벼운 휴리스틱)
   const completion: Record<StepId, boolean> = {
@@ -52,8 +49,7 @@ export function Sidebar(): JSX.Element {
     checklists: checklists.some((c) => c.status === 'approved'),
     tests: checklists.some((c) => c.specPath),
     run: !!lastReport && !lastReport.fatalError,
-    coverage: !!codeCoverage && !codeCoverage.fatalError,
-    traceability: !!traceability && traceability.rows.length > 0
+    coverage: !!codeCoverage && !codeCoverage.fatalError
   }
 
   function stepState(id: StepId): StepState {
