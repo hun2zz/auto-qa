@@ -2,6 +2,9 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC, type ProgressEvent, type TestScope } from '@shared/types'
 import {
   addRequirementText,
+  getRequirementDetail,
+  saveRequirement,
+  deleteRequirement,
   analyzeAssertions,
   analyzeSeed,
   generateSeed,
@@ -141,6 +144,15 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.addRequirementText, (_e, projectPath: string, title: string, content: string) =>
     addRequirementText(projectPath, title, content)
+  )
+  ipcMain.handle(IPC.getRequirementDetail, (_e, projectPath: string, name: string) =>
+    getRequirementDetail(projectPath, name)
+  )
+  ipcMain.handle(IPC.saveRequirement, (_e, projectPath: string, name: string, content: string) =>
+    saveRequirement(projectPath, name, content)
+  )
+  ipcMain.handle(IPC.deleteRequirement, (_e, projectPath: string, name: string) =>
+    deleteRequirement(projectPath, name)
   )
 
   ipcMain.handle(IPC.generateChecklist, (e, projectPath: string, requirementName: string) =>

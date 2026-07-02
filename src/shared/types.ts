@@ -541,6 +541,9 @@ export const IPC = {
   listRequirements: 'req:list',
   uploadRequirement: 'req:upload',
   addRequirementText: 'req:addText',
+  getRequirementDetail: 'req:detail',
+  saveRequirement: 'req:save',
+  deleteRequirement: 'req:delete',
   generateChecklist: 'checklist:generate',
   listChecklists: 'checklist:list',
   saveChecklist: 'checklist:save',
@@ -656,6 +659,15 @@ export interface AutoQaApi {
     title: string,
     content: string
   ): Promise<RequirementFile>
+  /** 요구사항 상세(전체 내용). PDF/이미지는 editable=false */
+  getRequirementDetail(
+    projectPath: string,
+    name: string
+  ): Promise<{ name: string; content: string; editable: boolean }>
+  /** 요구사항 내용 수정 저장 (텍스트 계열만) */
+  saveRequirement(projectPath: string, name: string, content: string): Promise<void>
+  /** 요구사항 삭제 */
+  deleteRequirement(projectPath: string, name: string): Promise<void>
 
   /** [AI] 요구사항 → 모듈 분해 → 모듈별 Given/When/Then 체크리스트들 생성 */
   generateChecklist(projectPath: string, requirementName: string): Promise<Checklist[]>

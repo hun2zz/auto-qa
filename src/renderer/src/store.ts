@@ -108,6 +108,8 @@ interface AppState {
 
   uploadRequirement: () => Promise<void>
   addRequirementText: (title: string, content: string) => Promise<boolean>
+  saveRequirement: (name: string, content: string) => Promise<boolean>
+  deleteRequirement: (name: string) => Promise<void>
   refreshRequirements: () => Promise<void>
 
   generateChecklist: (requirementName: string) => Promise<void>
@@ -426,6 +428,27 @@ export const useStore = create<AppState>((set, get) => {
         ok = true
       })
       return ok
+    },
+
+    saveRequirement: async (name, content) => {
+      const { project } = get()
+      if (!project) return false
+      let ok = false
+      await withBusy('saveRequirement', async () => {
+        await window.api.saveRequirement(project.path, name, content)
+        await get().refreshRequirements()
+        get().pushToast('success', `'${name}' 저장됨`)
+        ok = true
+      })
+      return ok
+    },
+
+    deleteRequirement: async (name) => {
+      const { project } = get()
+      if (!project) return
+      await window.api.deleteRequirement(project.path, name)
+      await get().refreshRequirements()
+      get().pushToast('info', `'${name}' 삭제됨`)
     },
 
     refreshChecklists: async () => {

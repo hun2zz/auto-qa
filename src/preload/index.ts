@@ -21,6 +21,9 @@ const api: AutoQaApi = {
   uploadRequirement: (p) => ipcRenderer.invoke(IPC.uploadRequirement, p),
   addRequirementText: (p, title, content) =>
     ipcRenderer.invoke(IPC.addRequirementText, p, title, content),
+  getRequirementDetail: (p, name) => ipcRenderer.invoke(IPC.getRequirementDetail, p, name),
+  saveRequirement: (p, name, content) => ipcRenderer.invoke(IPC.saveRequirement, p, name, content),
+  deleteRequirement: (p, name) => ipcRenderer.invoke(IPC.deleteRequirement, p, name),
 
   generateChecklist: (p, r) => ipcRenderer.invoke(IPC.generateChecklist, p, r),
   listChecklists: (p) => ipcRenderer.invoke(IPC.listChecklists, p),

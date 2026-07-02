@@ -322,6 +322,32 @@ function isTextLike(name: string): boolean {
   return /\.(md|markdown|txt|csv|json|ya?ml|html?)$/i.test(name)
 }
 
+/** 요구사항 상세: 텍스트 계열이면 전체 내용, 아니면(PDF/이미지) editable=false */
+export async function getRequirementDetail(
+  projectPath: string,
+  name: string
+): Promise<{ name: string; content: string; editable: boolean }> {
+  const path = resolveRequirementPath(projectPath, name)
+  if (!isTextLike(name)) return { name, content: '', editable: false }
+  const content = await fs.readFile(path, 'utf8').catch(() => '')
+  return { name, content, editable: true }
+}
+
+/** 요구사항 내용 수정 저장 (텍스트 계열만) */
+export async function saveRequirement(
+  projectPath: string,
+  name: string,
+  content: string
+): Promise<void> {
+  if (!isTextLike(name)) throw new Error('텍스트 요구사항만 편집할 수 있습니다 (PDF/이미지는 재업로드).')
+  await fs.writeFile(resolveRequirementPath(projectPath, name), content, 'utf8')
+}
+
+/** 요구사항 삭제 */
+export async function deleteRequirement(projectPath: string, name: string): Promise<void> {
+  await fs.rm(resolveRequirementPath(projectPath, name), { force: true })
+}
+
 // ----------------------------------------------------------------------------
 // 체크리스트 (frontmatter + markdown)
 // ----------------------------------------------------------------------------
