@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join, relative } from 'node:path'
 import type { AffectedSpec, ChangeImpactReport, RunReport } from '@shared/types'
 import { lastReportPath, testsDir } from './projectManager'
@@ -50,6 +51,44 @@ async function readLastReport(projectPath: string): Promise<RunReport | null> {
   }
 }
 
+const hashSnapshotPath = (p: string): string => join(p, '.qa', 'reports', '.source-hashes.json')
+
+/** 모든 소스의 내용 해시 맵 (relpath → sha1). */
+async function hashSources(projectPath: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  for (const abs of await walkSource(projectPath)) {
+    try {
+      out[relative(projectPath, abs)] = createHash('sha1')
+        .update(await fs.readFile(abs))
+        .digest('hex')
+    } catch {
+      /* ignore */
+    }
+  }
+  return out
+}
+
+/**
+ * 실행 시점의 소스 내용 해시를 저장한다. 이후 getChangeImpact 가 이 스냅샷과 비교해
+ * '내용이 진짜 바뀐' 파일만 잡는다(mtime 만 바뀐 건 무시). 테스트 실행 완료 시 호출.
+ */
+export async function snapshotSourceHashes(projectPath: string): Promise<void> {
+  try {
+    await fs.mkdir(join(projectPath, '.qa', 'reports'), { recursive: true })
+    await fs.writeFile(hashSnapshotPath(projectPath), JSON.stringify(await hashSources(projectPath)), 'utf8')
+  } catch {
+    /* best-effort */
+  }
+}
+
+async function readHashSnapshot(projectPath: string): Promise<Record<string, string> | null> {
+  try {
+    return JSON.parse(await fs.readFile(hashSnapshotPath(projectPath), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
 /** spec 텍스트에서 언급된 소스 파일 경로(src/....ts[x]) 를 뽑는다. */
 function referencedSources(specText: string): Set<string> {
   const set = new Set<string>()
@@ -64,9 +103,17 @@ export async function getChangeImpact(projectPath: string): Promise<ChangeImpact
   const lastRunAt = report?.startedAt || null
   const lastRunMs = lastRunAt ? Date.parse(lastRunAt) : NaN
 
-  // Phase 1: 마지막 실행 이후 변경된 소스
+  // Phase 1: 마지막 실행 이후 '내용이 바뀐' 소스.
+  // 우선 내용 해시 스냅샷과 비교(정확 — mtime 만 바뀐 건 무시). 스냅샷 없으면 mtime 폴백.
   const changedFiles: string[] = []
-  if (lastRunAt && !Number.isNaN(lastRunMs)) {
+  const snapshot = await readHashSnapshot(projectPath)
+  if (snapshot) {
+    const current = await hashSources(projectPath)
+    for (const [rel, h] of Object.entries(current)) {
+      if (snapshot[rel] !== h) changedFiles.push(rel) // 새 파일 or 내용 변경
+    }
+  } else if (lastRunAt && !Number.isNaN(lastRunMs)) {
+    // 폴백: 해시 스냅샷이 아직 없으면 mtime 으로(다음 실행 때 스냅샷 생성되어 정확해짐)
     for (const abs of await walkSource(projectPath)) {
       try {
         const st = await fs.stat(abs)

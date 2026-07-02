@@ -26,6 +26,7 @@ import { healPrompt, rulesHeader } from './prompts'
 import { loadProjectEnv } from './dotenv'
 import { restoreSpecImports } from './codeCoverage'
 import { backupSources, generateMutants, restoreMutationSources, type Mutant } from './mutation'
+import { snapshotSourceHashes } from './changeImpact'
 
 /** 동시성 제한 병렬 map. 결과는 입력 순서대로. 각 작업은 서로 독립이어야 안전. */
 async function mapLimit<T, R>(
@@ -176,6 +177,8 @@ async function doRun(
       if (prev && prev.results.length) toSave = mergeReports(prev, stamped)
     }
     await persistSafe(projectPath, toSave, onProgress)
+    // 이번 실행 시점의 소스 내용 해시를 저장 → 이후 '내용이 바뀐' 파일만 재테스트로 잡힘.
+    await snapshotSourceHashes(projectPath)
     announce(toSave, onProgress)
     return toSave
   } catch (e) {
@@ -314,6 +317,7 @@ export async function healAndRerun(
       report = await runAndStamp(projectPath, { extraEnv, onProgress, targets })
     }
     report = await finalize(report)
+    await snapshotSourceHashes(projectPath) // 재테스트 기준선 갱신
     onProgress({
       phase: 'playwright',
       message: `치유 ${healed} · 회귀의심 ${realBugs} · 통과 ${report.passed}/실패 ${report.failed}`,
