@@ -6,6 +6,7 @@ import {
   DocIcon,
   ChecklistIcon,
   FlaskIcon,
+  SparkleIcon,
   PlayIcon,
   GearIcon,
   CheckIcon,
@@ -63,8 +64,8 @@ export function Sidebar(): JSX.Element {
       <div className="drag flex h-[38px] items-center px-5" />
       <div className="px-5 pb-5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-text ring-1 ring-border">
-            <FlaskIcon />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/15 text-brand-soft ring-1 ring-brand/30">
+            <SparkleIcon />
           </div>
           <div className="leading-tight">
             <h1 className="text-[15px] font-semibold tracking-tight text-text">Auto QA</h1>

@@ -10,7 +10,7 @@ import { ProgressConsole } from './components/ProgressConsole'
 import { ConfigModal } from './components/ConfigModal'
 import { Toasts } from './components/Toasts'
 import { Button } from './components/Button'
-import { FolderIcon, FlaskIcon } from './components/icons'
+import { FolderIcon, SparkleIcon } from './components/icons'
 
 export default function App(): JSX.Element {
   const project = useStore((s) => s.project)
@@ -65,8 +65,8 @@ export default function App(): JSX.Element {
 function Welcome({ onOpen, opening }: { onOpen: () => void; opening: boolean }): JSX.Element {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-2 text-text ring-1 ring-border">
-        <FlaskIcon width={28} height={28} />
+      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/15 text-brand-soft ring-1 ring-brand/30">
+        <SparkleIcon width={28} height={28} />
       </div>
       <h2 className="text-2xl font-semibold tracking-tight text-text">Auto QA에 오신 것을 환영합니다</h2>
       <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">
