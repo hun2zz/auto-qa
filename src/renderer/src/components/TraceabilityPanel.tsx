@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react'
-import type { TraceRow, TraceState } from '@shared/types'
+import type { TraceChecklistGroup, TraceRow, TraceState } from '@shared/types'
 import { useStore } from '../store'
 import { Button } from './Button'
 import { PanelHeader, PanelBody, EmptyState } from './common'
@@ -63,6 +63,11 @@ function TraceabilitySection(): JSX.Element {
   const s = report.summary
   const scopeRows = report.rows.filter((r) => r.track === 'scope')
   const codeRows = report.rows.filter((r) => r.track === 'code')
+  // 필터 칩 카운트 대상: 항목 그룹이 있으면 '항목' 상태 + 코드행, 없으면 기존 행
+  const filterable: TraceState[] =
+    report.checklistGroups.length > 0
+      ? [...report.checklistGroups.flatMap((g) => g.items.map((i) => i.state)), ...codeRows.map((r) => r.state)]
+      : report.rows.map((r) => r.state)
   const shown = (rows: TraceRow[]): TraceRow[] =>
     filter === 'all' ? rows : rows.filter((r) => r.state === filter)
   const sortRows = (rows: TraceRow[]): TraceRow[] =>
@@ -98,10 +103,10 @@ function TraceabilitySection(): JSX.Element {
       {/* 필터 */}
       <div className="flex flex-wrap items-center gap-1.5">
         <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
-          전체 {report.rows.length}
+          전체 {filterable.length}
         </FilterChip>
         {ORDER.map((st) => {
-          const n = report.rows.filter((r) => r.state === st).length
+          const n = filterable.filter((x) => x === st).length
           if (n === 0) return null
           return (
             <FilterChip key={st} active={filter === st} onClick={() => setFilter(st)}>
@@ -112,8 +117,19 @@ function TraceabilitySection(): JSX.Element {
         })}
       </div>
 
-      {/* 개발범위 트랙 */}
-      {scopeRows.length > 0 && (
+      {/* 개발범위 — 항목(합격기준) 단위 검증 (QA 핵심 뷰) */}
+      {report.checklistGroups.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h3 className="text-[12px] font-medium text-muted">
+            개발범위 — 합격기준 항목별 검증 (요구사항 → 항목 → 테스트 → 결과)
+          </h3>
+          {report.checklistGroups.map((g) => (
+            <ChecklistGroupCard key={g.checklistId} group={g} filter={filter} />
+          ))}
+        </div>
+      )}
+      {/* 체크리스트 없이 파일만 있는 경우 폴백 (구 파일단위 뷰) */}
+      {report.checklistGroups.length === 0 && scopeRows.length > 0 && (
         <TraceTable
           title="개발범위 (요구사항 → 체크리스트 → 테스트)"
           rows={sortRows(shown(scopeRows))}
@@ -143,6 +159,67 @@ function RefreshBar({ onReload }: { onReload: () => void }): JSX.Element {
         새로고침
       </Button>
     </div>
+  )
+}
+
+function ChecklistGroupCard({
+  group,
+  filter
+}: {
+  group: TraceChecklistGroup
+  filter: TraceState | 'all'
+}): JSX.Element {
+  const items = filter === 'all' ? group.items : group.items.filter((i) => i.state === filter)
+  const pct = group.total ? Math.round((group.verified / group.total) * 100) : 0
+  return (
+    <article className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+        <div className="min-w-0">
+          <h4 className="truncate text-[13px] font-medium text-text">{group.title}</h4>
+          {group.requirement && (
+            <p className="truncate text-[11px] text-muted">요구사항: {group.requirement}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
+          <span className={group.verified === group.total ? 'text-ok' : 'text-muted'}>
+            {group.verified}/{group.total} 검증 ({pct}%)
+          </span>
+          {group.failing > 0 && <span className="text-bad">· 실패 {group.failing}</span>}
+          {group.noTest > 0 && <span className="text-warn">· 미검증 {group.noTest}</span>}
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-4 py-4 text-center text-[12px] text-muted">이 필터에 해당하는 항목 없음</p>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {items.map((it) => {
+            const m = STATE_META[it.state]
+            return (
+              <div key={it.id} className="flex items-start gap-3 px-4 py-2.5">
+                <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${m.dot}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] text-text">{it.text}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
+                    <span className="font-mono text-[10px]">{it.id}</span>
+                    {it.techniqueTags.map((t) => (
+                      <span key={t} className="rounded bg-surface-2 px-1 text-[9.5px] text-muted">
+                        {t}
+                      </span>
+                    ))}
+                    {it.testTitles.length > 0 ? (
+                      <span className="truncate">← {it.testTitles.join(', ')}</span>
+                    ) : (
+                      <span className="text-warn">← 매핑된 테스트 없음</span>
+                    )}
+                  </div>
+                </div>
+                <span className={`shrink-0 text-[11px] font-medium ${m.text}`}>{m.label}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </article>
   )
 }
 

@@ -5,10 +5,18 @@ import type {
   Checklist,
   RunReport,
   TraceabilityReport,
+  TraceChecklistGroup,
+  TraceItem,
   TraceRow,
   TraceState
 } from '@shared/types'
-import { lastReportPath, listChecklists, listRequirements, testsDir } from './projectManager'
+import {
+  lastReportPath,
+  listChecklists,
+  listRequirements,
+  parseChecklistItems,
+  testsDir
+} from './projectManager'
 import { getCodeCoverage } from './codeCoverage'
 
 /** 마지막 실행 리포트를 읽는다(없으면 null). */
@@ -67,6 +75,51 @@ function scopeRow(c: Checklist, runMap: Map<string, RunAgg>): TraceRow {
   }
 }
 
+/** 항목 ID → 그 항목을 커버(annotation)한 실행 결과들. 항목 단위 상태 판정용. */
+function resultsByCriterion(report: RunReport | null): Map<string, RunReport['results']> {
+  const m = new Map<string, RunReport['results']>()
+  for (const r of report?.results ?? []) {
+    for (const c of r.criteria ?? []) {
+      const arr = m.get(c) ?? []
+      arr.push(r)
+      m.set(c, arr)
+    }
+  }
+  return m
+}
+
+/** 체크리스트 하나를 항목 단위로 펼쳐 각 항목의 검증 상태를 판정. */
+function checklistGroup(c: Checklist, byCrit: Map<string, RunReport['results']>): TraceChecklistGroup {
+  const parsed = parseChecklistItems(c.id, c.markdown)
+  const items: TraceItem[] = parsed.map((it) => {
+    const covering = byCrit.get(it.id) ?? []
+    let state: TraceState
+    if (covering.length === 0) state = 'no-test'
+    else if (covering.some((r) => r.status === 'failed' || r.status === 'timedOut')) state = 'failing'
+    else if (covering.some((r) => r.status === 'passed')) state = 'verified'
+    else state = 'not-run'
+    return {
+      id: it.id,
+      text: it.text,
+      techniqueTags: it.techniqueTags,
+      state,
+      testTitles: [...new Set(covering.map((r) => r.title))]
+    }
+  })
+  return {
+    checklistId: c.id,
+    title: c.title,
+    requirement: c.sourceRequirement || null,
+    checklistStatus: c.status,
+    specFile: c.specPath ? basename(c.specPath) : null,
+    items,
+    total: items.length,
+    verified: items.filter((i) => i.state === 'verified').length,
+    failing: items.filter((i) => i.state === 'failing').length,
+    noTest: items.filter((i) => i.state === 'no-test').length
+  }
+}
+
 /**
  * 추적성 리포트: 요구사항 → 체크리스트 → 테스트 → 실행을 조인.
  * 새로 수집하지 않고 기존 .qa 산출물만 읽어 결정적으로 만든다(AI 미사용).
@@ -79,7 +132,11 @@ export async function getTraceability(projectPath: string): Promise<Traceability
     getCodeCoverage(projectPath)
   ])
   const runMap = runBySpec(report)
+  const byCrit = resultsByCriterion(report)
   const rows: TraceRow[] = []
+
+  // 항목 단위 그룹 (QA 핵심 뷰): 체크리스트별로 합격기준 항목의 검증 상태
+  const checklistGroups: TraceChecklistGroup[] = checklists.map((c) => checklistGroup(c, byCrit))
 
   // ① 체크리스트 단위 scope 행
   for (const c of checklists) rows.push(scopeRow(c, runMap))
@@ -133,6 +190,7 @@ export async function getTraceability(projectPath: string): Promise<Traceability
   return {
     generatedAt: new Date().toISOString(),
     rows,
+    checklistGroups,
     summary: {
       requirements: requirements.length,
       checklists: checklists.length,

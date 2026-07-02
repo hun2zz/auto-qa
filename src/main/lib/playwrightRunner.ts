@@ -235,10 +235,18 @@ function extractJson(stdout: string): Record<string, unknown> | null {
   return null
 }
 
+interface PwAnnotation {
+  type?: string
+  description?: string
+}
 interface PwSpec {
   title: string
   line?: number
-  tests?: Array<{ results?: Array<{ status?: string; duration?: number; error?: { message?: string } }> }>
+  annotations?: PwAnnotation[]
+  tests?: Array<{
+    annotations?: PwAnnotation[]
+    results?: Array<{ status?: string; duration?: number; error?: { message?: string } }>
+  }>
 }
 interface PwSuite {
   file?: string
@@ -251,15 +259,22 @@ function toReport(json: Record<string, unknown>): RunReport {
   const walk = (suite: PwSuite, file?: string): void => {
     const f = suite.file ?? file
     for (const spec of suite.specs ?? []) {
-      const r = spec.tests?.[0]?.results?.[0]
+      const t = spec.tests?.[0]
+      const r = t?.results?.[0]
       const status = normalizeStatus(r?.status)
+      // criterion annotation = 이 테스트가 커버하는 체크리스트 항목 ID들 (spec/test 양쪽 확인)
+      const anns = [...(spec.annotations ?? []), ...(t?.annotations ?? [])]
+      const criteria = anns
+        .filter((a) => a.type === 'criterion' && a.description)
+        .map((a) => a.description as string)
       results.push({
         title: spec.title,
         status,
         durationMs: r?.duration ?? 0,
         error: r?.error?.message,
         file: f,
-        line: spec.line
+        line: spec.line,
+        criteria: criteria.length ? [...new Set(criteria)] : undefined
       })
     }
     for (const child of suite.suites ?? []) walk(child, f)

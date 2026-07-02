@@ -332,6 +332,21 @@ export interface Checklist {
   specStale?: boolean
 }
 
+/**
+ * 체크리스트 '항목' 하나 (합격기준 1개). 마크다운 GWT 불릿을 구조화한 것.
+ * 파일 단위가 아니라 이 '항목 단위'로 검증 상태를 추적하는 게 QA 앱의 핵심.
+ */
+export interface ChecklistItem {
+  /** 안정 ID (예: login__flow-03). 테스트 annotation 이 이 ID 를 참조해 항목↔테스트를 잇는다. */
+  id: string
+  /** 소속 체크리스트 id */
+  checklistId: string
+  /** 항목 본문(Given/When/Then 포함, 셀렉터 힌트 제외 정리본) */
+  text: string
+  /** 적용된 블랙박스 기법 태그 (EP/BVA/DT/ST) */
+  techniqueTags: string[]
+}
+
 export type TestStatus = 'passed' | 'failed' | 'skipped' | 'timedOut'
 
 /** 개별 테스트 결과 */
@@ -345,6 +360,8 @@ export interface TestResult {
   file?: string
   /** spec 의 줄 번호 (실패만 재실행 시 file:line 으로 정밀 타깃) */
   line?: number
+  /** 이 테스트가 커버하는 체크리스트 항목 ID들 (annotation type=criterion). 항목↔실행 연결용 */
+  criteria?: string[]
 }
 
 /** 한 번의 실행 리포트 */
@@ -395,9 +412,36 @@ export interface TraceRow {
   state: TraceState
 }
 
+/** 항목(합격기준) 하나의 검증 상태 */
+export interface TraceItem {
+  id: string
+  text: string
+  techniqueTags: string[]
+  state: TraceState
+  /** 이 항목을 커버하는(annotation 으로 선언한) 테스트 제목들 */
+  testTitles: string[]
+}
+
+/** 체크리스트 하나를 '항목 단위'로 펼친 그룹 */
+export interface TraceChecklistGroup {
+  checklistId: string
+  title: string
+  requirement: string | null
+  checklistStatus: ChecklistStatus | null
+  specFile: string | null
+  items: TraceItem[]
+  /** 항목 요약 */
+  total: number
+  verified: number
+  failing: number
+  noTest: number
+}
+
 export interface TraceabilityReport {
   generatedAt: string
   rows: TraceRow[]
+  /** 항목 단위 뷰 (체크리스트별). 파일 단위 rows 를 대체하는 QA 핵심 화면. */
+  checklistGroups: TraceChecklistGroup[]
   summary: {
     requirements: number
     checklists: number

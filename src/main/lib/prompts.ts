@@ -387,9 +387,11 @@ export function testsPrompt(args: {
   checklistPath: string
   checklistTitle: string
   checklistContent: string
+  items: Array<{ id: string; text: string }>
   specOutPath: string
   baseURL: string
 }): string {
+  const itemList = args.items.map((it) => `  - ${it.id}: ${it.text}`).join('\n')
   return `너는 Playwright 테스트 자동화 전문가다. 이 체크리스트는 '하나의 개발 범위(기능)'의 합격기준이다. 이걸 **그 기능이 범위대로 완료·작동하는지 검증하는 '흐름(flow) 단위 인수 테스트'**로 변환한다. (항목별 파편 테스트 ❌ — 흐름 단위 시나리오 ⭕)
 
 # 입력 — 체크리스트 (내용을 아래에 그대로 준다. 이 파일을 다시 Read 하지 말 것)
@@ -399,6 +401,23 @@ export function testsPrompt(args: {
 --- 체크리스트 내용 시작 ---
 ${args.checklistContent}
 --- 체크리스트 내용 끝 ---
+
+# 합격기준 항목 (ID → 내용) — 각 항목이 어느 테스트로 검증되는지 반드시 표시해야 한다
+${itemList}
+
+# ⭐ 항목 매핑 (이 앱의 핵심 — 빠뜨리면 그 항목은 '미검증'으로 잡힘)
+- 각 test() 에 **그 test 가 검증하는 항목 ID들**을 Playwright annotation 으로 선언한다:
+  \`\`\`ts
+  test('정상 상담 신청 → 완료', {
+    annotation: [
+      { type: 'criterion', description: '${args.items[0]?.id ?? args.checklistId + '-01'}' },
+      { type: 'criterion', description: '<이 시나리오가 함께 커버하는 다른 항목 ID>' }
+    ]
+  }, async ({ page }) => { ... })
+  \`\`\`
+- 한 흐름 test 가 **여러 항목을 동시에** 커버하면 그 항목 ID 를 모두 나열한다(다:다 허용).
+- 위 항목 목록의 **모든 ID 가 최소 한 test 에는 매핑**돼야 한다. 코드/셀렉터로 확정 못 해 test.fixme 로 두는 항목도 annotation 은 붙이되 fixme 로 남긴다.
+- **항목을 커버하는 실제 단언(expect)** 이 그 test 안에 있어야 한다(annotation 만 붙이고 검증 안 하면 안 됨).
 
 # 핵심 원칙 — 흐름 단위로 두껍게
 - 체크리스트 항목 하나하나를 개별 test() 로 쪼개지 마라. 대신 **이 기능의 '사용자 흐름'을 파악**해, test.describe('<기능 이름>') 안에 **시나리오 test() 3~6개**로 묶는다.

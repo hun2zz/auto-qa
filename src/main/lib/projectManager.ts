@@ -4,6 +4,7 @@ import { basename, join, resolve } from 'node:path'
 import {
   DEFAULT_QA_CONFIG,
   type Checklist,
+  type ChecklistItem,
   type ChecklistStatus,
   type ProgressEvent,
   type ProjectInfo,
@@ -325,6 +326,32 @@ function isTextLike(name: string): boolean {
 // 체크리스트 (frontmatter + markdown)
 // ----------------------------------------------------------------------------
 
+/**
+ * 체크리스트 마크다운의 합격기준 불릿(GWT)을 '항목' 단위로 파싱한다.
+ * 파일 단위가 아니라 항목 단위로 검증 상태를 추적하기 위한 뿌리.
+ * ID 는 위치 기반(<checklistId>-NN) — 안정성을 위해 향후 생성 단계에서 명시 ID 를 주입할 수 있다.
+ */
+export function parseChecklistItems(checklistId: string, markdown: string): ChecklistItem[] {
+  const items: ChecklistItem[] = []
+  for (const raw of markdown.split('\n')) {
+    const m = raw.match(/^\s*[-*]\s+(.+)$/)
+    if (!m) continue
+    const bullet = m[1].trim()
+    // 합격기준 불릿만: Given/When/Then 마커가 하나라도 있는 줄
+    if (!/\*\*(Given|When|Then)\*\*/i.test(bullet)) continue
+    const techniqueTags = [...bullet.matchAll(/\[(EP|BVA|DT|ST)\]/g)].map((x) => x[1])
+    // 표시용 정리: 셀렉터 힌트(_(...)_)와 기법 태그 제거
+    const text = bullet
+      .replace(/_\(셀렉터 힌트:[^)]*\)_/g, '')
+      .replace(/\[(EP|BVA|DT|ST)\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    const id = `${checklistId}-${String(items.length + 1).padStart(2, '0')}`
+    items.push({ id, checklistId, text, techniqueTags })
+  }
+  return items
+}
+
 function parseChecklist(id: string, raw: string): Checklist {
   const fm = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
   const meta: Record<string, string> = {}
@@ -601,9 +628,11 @@ export async function generateTests(
     seedHeader(await getKnownWorld(projectPath)) +
     (await indexHdr(projectPath))
 
+  const items = parseChecklistItems(checklistId, checklist.markdown)
   const res = await runClaude({
     projectPath,
     // 체크리스트 내용을 프롬프트에 직접 주입 → AI 가 체크리스트를 다시 Read 하지 않아 탐색 턴이 준다.
+    // 항목(ID)도 함께 주입 → 각 test 가 커버 항목을 annotation 으로 선언(항목↔테스트 연결).
     prompt:
       rules +
       testsPrompt({
@@ -611,6 +640,7 @@ export async function generateTests(
         checklistPath,
         checklistTitle: checklist.title,
         checklistContent: checklist.markdown,
+        items: items.map((it) => ({ id: it.id, text: it.text })),
         specOutPath,
         baseURL
       }),
