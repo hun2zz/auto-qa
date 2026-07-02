@@ -44,11 +44,24 @@ export function TestsPanel(): JSX.Element {
       n.has(id) ? n.delete(id) : n.add(id)
       return n
     })
+  const lastReport = useStore((s) => s.lastReport)
   const approved = checklists.filter((c) => c.status === 'approved')
   const drafts = checklists.filter((c) => c.status !== 'approved')
   const hasPending = approved.some((c) => !c.specPath)
   const scopeFiles = testFiles.filter((f) => f.kind === 'checklist')
   const codeFiles = testFiles.filter((f) => f.kind === 'code')
+
+  // 마지막 실행에서 '실패/타임아웃'한 spec(파일명) 집합 → 어느 체크리스트가 실패했는지 매핑
+  const base = (p?: string | null): string => (p ? p.split('/').pop() ?? p : '')
+  const failingSpecs = new Set(
+    (lastReport?.results ?? [])
+      .filter((r) => r.status === 'failed' || r.status === 'timedOut')
+      .map((r) => base(r.file))
+      .filter(Boolean)
+  )
+  const isFailing = (c: Checklist): boolean => !!c.specPath && failingSpecs.has(base(c.specPath))
+  const failingIds = approved.filter(isFailing).map((c) => c.id)
+  const selectFailing = (): void => setSelectedIds(new Set(failingIds))
 
   return (
     <>
@@ -59,6 +72,15 @@ export function TestsPanel(): JSX.Element {
         action={
           tab === 'scope' ? (
             <div className="flex items-center gap-2">
+              {failingIds.length > 0 && selectedIds.size === 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={selectFailing}
+                  title="마지막 실행에서 실패한 개발범위 테스트의 체크리스트만 선택합니다"
+                >
+                  🔴 실패한 것만 선택 ({failingIds.length})
+                </Button>
+              )}
               {selectedIds.size > 0 && (
                 <Button
                   variant="secondary"
@@ -68,7 +90,7 @@ export function TestsPanel(): JSX.Element {
                     setSelectedIds(new Set())
                   }}
                 >
-                  선택 생성 ({selectedIds.size})
+                  선택 생성/재생성 ({selectedIds.size})
                 </Button>
               )}
               {hasPending && (
@@ -151,6 +173,7 @@ export function TestsPanel(): JSX.Element {
                         checklist={c}
                         checked={selectedIds.has(c.id)}
                         onToggle={() => toggleId(c.id)}
+                        failing={isFailing(c)}
                       />
                     ))}
                   </div>
@@ -436,11 +459,13 @@ function TestFilesCard({ files, title }: { files: TestFile[]; title?: string }):
 function TestRow({
   checklist,
   checked,
-  onToggle
+  onToggle,
+  failing
 }: {
   checklist: Checklist
   checked?: boolean
   onToggle?: () => void
+  failing?: boolean
 }): JSX.Element {
   const generateTests = useStore((s) => s.generateTests)
   const runTests = useStore((s) => s.runTests)
@@ -452,7 +477,13 @@ function TestRow({
     <div
       className={[
         'flex items-center justify-between gap-4 rounded-xl border bg-surface p-5 transition-colors',
-        checked ? 'border-brand/50 ring-1 ring-brand/20' : hasSpec ? 'border-ok/40 ring-1 ring-ok/15' : 'border-border'
+        checked
+          ? 'border-brand/50 ring-1 ring-brand/20'
+          : failing
+            ? 'border-bad/50 ring-1 ring-bad/20'
+            : hasSpec
+              ? 'border-ok/40 ring-1 ring-ok/15'
+              : 'border-border'
       ].join(' ')}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -477,7 +508,8 @@ function TestRow({
             <h3 className="truncate text-sm font-medium text-text" title={checklist.title}>
               {checklist.title}
             </h3>
-            {hasSpec && !checklist.specStale && (
+            {failing && <Badge tone="bad">🔴 마지막 실행 실패 — 재생성 권장</Badge>}
+            {hasSpec && !failing && !checklist.specStale && (
               <Badge tone="ok" icon={<CheckIcon width={11} height={11} strokeWidth={3} />}>
                 생성됨
               </Badge>
