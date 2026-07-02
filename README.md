@@ -154,6 +154,28 @@ flowchart TD
 
 ## 3. 테스트 생성 — 🤖 AI (두 트랙)
 
+```mermaid
+flowchart TD
+    subgraph SCOPE["개발범위 트랙 (요구사항 기반)"]
+        CL["승인된 체크리스트 + 항목 ID"] --> S["🤖 flow 시나리오 test (동시 6)<br/>test.describe + 시나리오 3~6개"]
+        S --> A["각 test 에 커버 항목 ID annotation<br/>(criterion) — 다:다"]
+        A --> G1{"매핑 안 된 항목?"}
+        G1 -->|"있음"| U["미검증으로 잡힘<br/>(AI 가 빼먹으면 즉시 드러남)"]
+    end
+    subgraph CODE["코드 트랙 (요구사항 없음)"]
+        SRC["코드(라우트·컴포넌트)"] --> CT["🤖 characterization test<br/>현재 동작 박제 · 사용자 플로우 top-down 으로 파일 분리"]
+        CT --> CF["code-*.spec.ts (code-lead-submit 등)"]
+    end
+    IDX[("grounding 인덱스")] -.셀렉터 환각 차단 주입.-> S
+    IDX -.-> CT
+    classDef ai fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+    classDef data fill:#f5f3ff,stroke:#a78bfa,color:#4c1d95
+    classDef bad fill:#fef2f2,stroke:#ef4444,color:#7f1d1d
+    class S,CT ai
+    class IDX data
+    class U bad
+```
+
 ### 개발범위 트랙 (요구사항 기반)
 승인된 체크리스트 → Playwright spec (동시 6개). **항목별 파편 테스트가 아니라 흐름(flow) 단위 시나리오**로 만든다(`test.describe` + 시나리오 test 3~6개).
 
@@ -173,16 +195,32 @@ flowchart TD
 
 소스에서 **실존하는** `data-testid` / `aria-label` / 라우트를 정규식으로 추출해 `.qa/index/index.json` 에 저장 → 생성 프롬프트에 주입. **AI 가 없는 셀렉터를 지어내는 환각을 차단**한다.
 
-## 5. 실행 & 리포트 — ⚖️ Playwright (결정적)
+## 5. 실행 & 검증 — ⚖️ Playwright (결정적)
 
 dev 서버를 구동하고(구동 명령·준비 URL 은 config) Playwright 로 실행 → 통과/실패/스킵. 로그인(auth)이 켜져 있으면 1회 로그인 → 세션(storageState) 재사용. 실패만 재실행, 특정 spec 만 실행도 가능. 리포트는 `--reporter=json` 을 stdout 으로 받아 파싱(공유 파일 없음).
 
+> UI 상 이 페이지("실행 & 검증", 4단계)는 **실행 액션 + 결과(추적성·변경영향) + 품질 도구(self-healing·네거티브·flaky·mutation)**를 한 곳에 합쳤다. 실행하면 아래 추적성 뷰가 즉시 갱신된다. (기존 별도 "추적성" 스텝은 이 페이지로 통합됨)
+
 ## 6. self-healing — 🤖 AI(분류) + ⚖️ 실행
 
-실패한 spec 을 파일별로 **동시 4개** 병렬 처리. AI 는 실패를 **분류만** 한다:
-- **드리프트**(셀렉터 모호/텍스트 변경/로그인 상태) → 고침 → `HEALED`
-- **진짜 회귀** → 안 고치고 되돌림 → `REAL_BUG` (절대 초록으로 세탁 안 함)
-- 드리프트 수정본만 재실행.
+실패한 spec 을 파일별로 **동시 4개** 병렬 처리. AI 는 실패를 **분류만** 하고, 통과 판정은 기계가 한다.
+
+```mermaid
+flowchart TD
+    F["실패한 spec (파일별, 동시 4)"] --> BK["원본 백업"]
+    BK --> AI["🤖 AI: 왜 깨졌나 분류"]
+    AI --> Q{"판정"}
+    Q -->|"드리프트<br/>(셀렉터 모호·텍스트 변경·로그인 상태)"| H["고침 → HEALED"]
+    Q -->|"진짜 회귀"| R["안 고치고 원본 되돌림 → REAL_BUG<br/>(절대 초록으로 세탁 안 함)"]
+    Q -->|"불확실/실패"| S["변경 폐기 → SKIPPED"]
+    H --> RERUN["⚖️ 드리프트 수정본만 재실행 → 통과 판정"]
+    classDef ai fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+    classDef bad fill:#fef2f2,stroke:#ef4444,color:#7f1d1d
+    classDef det fill:#ecfdf5,stroke:#10b981,color:#064e3b
+    class AI,H ai
+    class R bad
+    class RERUN det
+```
 
 ## 7. 네거티브 컨트롤 — ⚖️ AI 없음
 
@@ -332,6 +370,29 @@ flowchart LR
 
 - **개발범위 트랙**: 체크리스트별 카드 → 항목마다 상태·기법태그·커버 테스트. "3개 중 2개 검증, 1개 실패, 0개 미검증".
 - **코드 트랙**: 합격기준이 없으므로 **테스트 단위**로 펼침(파일별 test 하나하나의 통과/실패). → "code-consultation 파일 실패"가 아니라 "빈 폼 검증 테스트가 실패"까지 콕 집음.
+- 추적성 뷰는 **실행 & 검증** 페이지(4단계) 안에 주 결과 뷰로 들어있다(실행하면 바로 갱신).
+
+### 변경 영향 분석 (TIA) — 재테스트 필수 표시 · ⚖️ AI 없음
+
+고객사 수정처럼 **소스를 고치면**, 마지막 실행 이후 **내용이 바뀐 파일**을 감지해 그 파일을 커버하는 테스트를 **"⚠ 재테스트 필수"**로 표시한다. git 불필요(내용 해시 기반).
+
+```mermaid
+flowchart TD
+    RUN["테스트 실행 완료"] --> SNAP["소스 내용 해시 스냅샷 저장<br/>.qa/reports/.source-hashes.json"]
+    EDIT["에디터에서 소스 수정 (저장)"] --> CHK["현재 해시 vs 스냅샷 비교"]
+    SNAP -.기준선.-> CHK
+    CHK --> CF{"내용이 바뀐 파일?"}
+    CF -->|"없음"| OK["✓ 최신 (재테스트 불필요)"]
+    CF -->|"있음"| MAP["변경 파일을 커버하는 spec 매핑<br/>(spec 이 언급한 src/... 경로)"]
+    MAP --> BADGE["⚠ 재테스트 필수 배너 + 배지"]
+    classDef det fill:#ecfdf5,stroke:#10b981,color:#064e3b
+    classDef warn fill:#fffbeb,stroke:#f59e0b,color:#78350f
+    class SNAP,OK det
+    class BADGE warn
+```
+
+- **내용 해시** 기반이라 mtime 만 바뀐 건(도구가 rewrite·touch) 무시 → 진짜 편집만 잡힘.
+- 매핑은 "spec 이 언급/선언한 소스 경로" 기준(코드 트랙 헤더의 `// 덮는 코드:` 등). 언급 안 된 실행 커버까지 잡으려면 per-test 커버리지 필요(향후).
 
 ## 15. 구현 감사 / 요구사항 테스트 커버리지 — 🤖 AI
 
@@ -418,8 +479,8 @@ src/
 
 ## 완성도 / 남은 후속
 
-- ✅ 항목 단위 추적성 · mutation score · flaky · 네거티브 컨트롤 · 코드 커버리지(서버+클라)
+- ✅ 항목 단위 추적성 · mutation score · flaky · 네거티브 컨트롤 · 코드 커버리지(서버+클라) · **변경 영향(TIA) 재테스트 표시** · 요구사항 상세/수정/삭제
 - ⬜ 항목별 **승인/분류 상태**(자동화가능/수동/시드필요/제외)
 - ⬜ mutation-guided 생성(살아남은 mutant → AI 가 잡는 테스트 생성, Meta ACH 식)
 - ⬜ **CI 게이트**(헤드리스 러너 + GitHub Action, PR마다 실행)
-- ⬜ TIA(변경 영향 테스트만 실행) · 비주얼/스냅샷 회귀 · 비-Next 스택 대응
+- ⬜ TIA 정밀도 ↑(per-test 커버리지 기반 매핑) · 비주얼/스냅샷 회귀 · 비-Next 스택 대응
