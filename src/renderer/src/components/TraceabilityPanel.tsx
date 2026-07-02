@@ -80,7 +80,6 @@ export function TraceabilitySection(): JSX.Element {
     )
   }
 
-  const s = report.summary
   const scopeRows = report.rows.filter((r) => r.track === 'scope')
   const codeRows = report.rows.filter((r) => r.track === 'code')
   void codeRows
@@ -92,10 +91,26 @@ export function TraceabilitySection(): JSX.Element {
   const scopeCount = report.checklistGroups.reduce((n, g) => n + g.items.length, 0) || scopeRows.length
   const codeCount = report.codeGroups.reduce((n, g) => n + g.tests.length, 0)
 
-  // 필터 칩 카운트: 현재 보고 있는 트랙 기준
+  // 필터 칩·요약 카운트: 현재 보고 있는 트랙 기준 (같은 배열에서 파생 → 숫자 일관성 보장)
   const codeTestStates = report.codeGroups.flatMap((g) => g.tests.map((t) => testStateOf(t.status)))
-  const scopeStates = report.checklistGroups.flatMap((g) => g.items.map((i) => i.state))
+  const scopeStates = report.checklistGroups.length
+    ? report.checklistGroups.flatMap((g) => g.items.map((i) => i.state))
+    : scopeRows.map((r) => r.state)
   const filterable: TraceState[] = activeTrack === 'scope' ? scopeStates : codeTestStates
+  // 활성 트랙의 성공/실패 대시보드 (필터칩과 동일 소스)
+  const sum = ((): { total: number; verified: number; failing: number; notRun: number; gap: number; pct: number } => {
+    const c = (state: TraceState): number => filterable.filter((x) => x === state).length
+    const total = filterable.length
+    const verified = c('verified')
+    return {
+      total,
+      verified,
+      failing: c('failing'),
+      notRun: c('not-run'),
+      gap: c('no-test') + c('no-checklist'),
+      pct: total ? Math.round((verified / total) * 100) : 0
+    }
+  })()
   const shown = (rows: TraceRow[]): TraceRow[] =>
     filter === 'all' ? rows : rows.filter((r) => r.state === filter)
   const sortRows = (rows: TraceRow[]): TraceRow[] =>
@@ -105,29 +120,6 @@ export function TraceabilitySection(): JSX.Element {
     <div className="flex flex-col gap-4">
       <RefreshBar onReload={reload} />
       {impact && <ChangeImpactBanner impact={impact} />}
-
-      {/* 요약 */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat
-          label="개발범위 검증율"
-          value={scopeRows.length ? `${s.verifiedPct}%` : '—'}
-          hint={scopeRows.length ? `검증 ${s.verified} · 실패 ${s.failing}` : '요구사항 없음'}
-          tone={s.failing > 0 ? 'bad' : 'ok'}
-        />
-        <Stat label="검증됨" value={String(s.verified)} hint="🟢 통과 확인" tone="ok" />
-        <Stat
-          label="구멍(gap)"
-          value={String(s.gaps)}
-          hint="테스트/체크리스트 없음"
-          tone={s.gaps > 0 ? 'warn' : 'muted'}
-        />
-        <Stat
-          label="코드 커버리지"
-          value={report.codeCoveragePct != null ? `${report.codeCoveragePct}%` : '—'}
-          hint={report.lastRunAt ? `실행 ${fmt(report.lastRunAt)}` : '실행 기록 없음'}
-          tone="muted"
-        />
-      </div>
 
       {/* 트랙 탭 (개발범위 / 코드) — 둘 다 있을 때만 노출 */}
       {hasScope && hasCode && (
@@ -140,6 +132,43 @@ export function TraceabilitySection(): JSX.Element {
           </TrackTab>
         </div>
       )}
+
+      {/* 요약 — 활성 트랙(개발범위/코드)의 성공·실패 대시보드 */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat
+          label={activeTrack === 'scope' ? '개발범위 검증율' : '코드 통과율'}
+          value={sum.total ? `${sum.pct}%` : '—'}
+          hint={sum.total ? `${sum.verified}/${sum.total} 통과` : '항목 없음'}
+          tone={sum.failing > 0 ? 'bad' : 'ok'}
+        />
+        <Stat
+          label={activeTrack === 'scope' ? '검증됨' : '통과'}
+          value={String(sum.verified)}
+          hint="🟢 통과 확인"
+          tone="ok"
+        />
+        <Stat
+          label="실패"
+          value={String(sum.failing)}
+          hint={sum.failing > 0 ? '🔴 재확인 필요' : '없음'}
+          tone={sum.failing > 0 ? 'bad' : 'muted'}
+        />
+        {activeTrack === 'scope' ? (
+          <Stat
+            label="미실행 / 구멍"
+            value={String(sum.notRun + sum.gap)}
+            hint={sum.gap > 0 ? `테스트 없음 ${sum.gap}` : '미실행 항목'}
+            tone={sum.notRun + sum.gap > 0 ? 'warn' : 'muted'}
+          />
+        ) : (
+          <Stat
+            label="코드 커버리지"
+            value={report.codeCoveragePct != null ? `${report.codeCoveragePct}%` : '—'}
+            hint={report.lastRunAt ? `실행 ${fmt(report.lastRunAt)}` : '실행 기록 없음'}
+            tone="muted"
+          />
+        )}
+      </div>
 
       {/* 필터 */}
       <div className="flex flex-wrap items-center gap-1.5">
