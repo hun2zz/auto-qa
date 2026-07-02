@@ -580,6 +580,18 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
         </div>
       )}
 
+      {report.authError && (
+        <div className="flex items-start gap-3 rounded-xl border border-warn/40 bg-warn/10 p-4">
+          <AlertIcon className="mt-0.5 shrink-0 text-warn" width={18} height={18} />
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-warn">인증 셋업 실패 — 결과 신뢰 불가</h3>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-text/80">
+              {report.authError}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 트랙 선택 (품질 도구·상세목록의 대상 스코프) */}
       {hasBoth && (
         <div className="flex gap-1 rounded-xl border border-border bg-surface-2/40 p-1">

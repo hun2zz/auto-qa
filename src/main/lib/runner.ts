@@ -131,6 +131,15 @@ export async function runFailedTests(
   return doRun(projectPath, onProgress, targets)
 }
 
+/** 인증 셋업(auth.setup.ts 의 'authenticate') 테스트가 실패했는지. 로그인 자체가 안 된 신호. */
+function authSetupFailed(report: RunReport): boolean {
+  return report.results.some(
+    (r) =>
+      (r.title === 'authenticate' || (r.file ?? '').includes('auth.setup')) &&
+      (r.status === 'failed' || r.status === 'timedOut')
+  )
+}
+
 /** runTests / runFailedTests 공통 본문. targets 지정 시 해당 타깃만 실행. */
 async function doRun(
   projectPath: string,
@@ -176,6 +185,15 @@ async function doRun(
     if (targets && targets.length) {
       const prev = await getLastReport(projectPath)
       if (prev && prev.results.length) toSave = mergeReports(prev, stamped)
+    }
+    // 인증 셋업(로그인) 실패 감지 → 명확히 안내. setup(authenticate)이 실패하면 로그인 필요한
+    // 테스트가 세션 없이 돌아 대량 오탐이 난다. 원인은 대개 '저장된 관리자 비밀번호 ≠ 앱의 실제 값'.
+    if (extraEnv.QA_AUTH_ENABLED === '1' && authSetupFailed(stamped)) {
+      toSave.authError =
+        '인증 셋업(로그인) 실패 — 저장된 관리자 비밀번호가 앱과 다를 수 있습니다. ' +
+        '설정에서 관리자 비밀번호를 다시 저장한 뒤 재실행하세요. ' +
+        '(로그인이 필요한 테스트는 세션 없이 실행돼 실패로 잡히므로 결과를 신뢰할 수 없습니다.)'
+      onProgress({ phase: 'playwright', message: '⚠️ ' + toSave.authError, error: true })
     }
     await persistSafe(projectPath, toSave, onProgress)
     // 이번 실행 시점의 소스 내용 해시를 저장 → 이후 '내용이 바뀐' 파일만 재테스트로 잡힘.
