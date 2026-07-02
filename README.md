@@ -116,7 +116,33 @@ flowchart TD
 
 ## 2. 체크리스트 생성 — 🤖 AI
 
-**무엇을:** 요구사항을 Given/When/Then 합격기준으로 분해한다. 거대 요구사항은 먼저 모듈로 쪼갠 뒤 모듈마다 체크리스트를 만든다(동시 4개).
+**무엇을:** 요구사항을 Given/When/Then 합격기준으로 분해한다. 거대 요구사항은 먼저 '모듈'로 쪼갠 뒤 모듈마다 체크리스트를 만든다.
+
+### 요구사항 → 모듈 → 체크리스트 → 테스트 (fan-out)
+
+```mermaid
+flowchart TD
+    REQ["요구사항 1개 (+ 프로젝트 코드)"] --> D["🤖 분해 decompose<br/>요구사항 + 코드(라우트·API)를 읽고<br/>'독립적으로 테스트 가능한 기능 모듈'로 분해"]
+    D --> J[("modules.json<br/>[{id, title, summary}] × N")]
+    J --> M1["모듈: 이름 검증"]
+    J --> M2["모듈: 연락처 검증"]
+    J --> M3["모듈: 레이트리밋 …"]
+    M1 --> C1["🤖 체크리스트 1 (집중 모듈)<br/>GWT + [EP/BVA/DT/ST] + 항목 ID"]
+    M2 --> C2["🤖 체크리스트 2"]
+    M3 --> C3["🤖 체크리스트 N"]
+    C1 --> T1["🤖 spec 1 (flow 시나리오 + 항목ID annotation)"]
+    C2 --> T2["🤖 spec 2"]
+    C3 --> T3["🤖 spec N"]
+    classDef ai fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+    classDef data fill:#f5f3ff,stroke:#a78bfa,color:#4c1d95
+    class D,C1,C2,C3,T1,T2,T3 ai
+    class J data
+```
+
+- **분해(decompose)**: AI 가 요구사항 + 실제 코드를 읽고 기능 단위로 `modules.json`(`[{id,title,summary}]`)을 씀. 잘게 쪼갤수록 좋음(게시판 종류마다·관리자→유저 반영 플로우마다·폼/검색/SEO 각각). 분해 결과 ≤1 이면 쪼개지 않고 단일 체크리스트로 폴백.
+- **모듈마다 체크리스트**(②, 동시 4개): 각 모듈을 '집중 모듈'로 프롬프트에 넣어 그 모듈만의 GWT 를 작성.
+- **체크리스트마다 테스트**(③, 동시 6개): 아래 3번. → 모듈이 병렬화·파일분리·추적성의 단위.
+- ⚠️ 분해 경계는 **AI 판단**(콜그래프 아님)이라 재생성 시 모듈 구성이 달라질 수 있음.
 
 **내부 동작:**
 - AI 가 요구사항 + 프로젝트 코드를 Read/Grep 하고, **grounding 인덱스**(실존 testid/aria/route)를 주입받아 근거 기반으로 항목 작성.
