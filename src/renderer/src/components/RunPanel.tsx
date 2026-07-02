@@ -504,7 +504,7 @@ function QualityToolsSection({
         </p>
       )}
       {open && (
-        <div className="grid gap-4 border-t border-border p-4 lg:grid-cols-2">
+        <div className="space-y-4 border-t border-border p-4">
           <SelfHealing report={report} track={track} />
           <NegativeControlBlock scope={track} />
           <FlakyBlock scope={track} />
@@ -580,10 +580,7 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
         </div>
       )}
 
-      {/* ── 주 결과 뷰: 항목/테스트 단위 추적성 + 변경영향(재테스트) ── */}
-      <TraceabilitySection />
-
-      {/* 트랙 선택 (아래 품질 도구·상세목록의 대상 스코프) */}
+      {/* 트랙 선택 (품질 도구·상세목록의 대상 스코프) */}
       {hasBoth && (
         <div className="flex gap-1 rounded-xl border border-border bg-surface-2/40 p-1">
           <ReportTab active={track === 'all'} onClick={() => setTrack('all')} label="전체" count={report.results.length} />
@@ -592,8 +589,11 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
         </div>
       )}
 
-      {/* 품질 검증 도구 (보조·고급 — 라벨+칩으로 발견성 확보, 접이식 2열) */}
+      {/* 품질 검증 도구 (보조·고급 — 라벨+칩으로 발견성 확보, 접이식) — 주 뷰 위로 올려 발견성 확보 */}
       <QualityToolsSection report={report} track={track} />
+
+      {/* ── 주 결과 뷰: 항목/테스트 단위 추적성 + 변경영향(재테스트) ── */}
+      <TraceabilitySection />
 
       {/* ── 접이식: 상세 실행 결과 + 선택 실행/힐링 (추적성이 주 뷰라 접어둠) ── */}
       <div className="rounded-xl border border-border bg-surface">
