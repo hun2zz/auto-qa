@@ -454,6 +454,67 @@ const VERDICT: Record<string, { text: string; label: string; box: string }> = {
 
 const isCodeResult = (r: TestResult): boolean => (r.file ?? '').startsWith('code-')
 
+/**
+ * 품질 검증 도구 묶음 — 테스트 '결과'가 아니라 테스트 '스위트 자체'의 품질을 검증하는
+ * 보조·고급 도구들. 발견성을 위해 라벨 헤더 + 도구 칩 + 개수 배지를 항상 노출하고,
+ * 본문은 접이식 2열 그리드로 세로 스크롤을 압축한다.
+ */
+function QualityToolsSection({
+  report,
+  track
+}: {
+  report: RunReport
+  track: TestScope
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const chips = ['AI 자동수정', '네거티브', 'flaky', 'mutation']
+  return (
+    <div className="rounded-xl border border-border bg-surface">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+      >
+        <SparkleIcon className="shrink-0 text-brand-soft" width={16} height={16} />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="text-[13px] font-semibold text-text">품질 검증 도구</span>
+          <Badge tone="brand">{chips.length}</Badge>
+          <div className="hidden items-center gap-1 sm:flex">
+            {chips.map((c) => (
+              <span
+                key={c}
+                className="rounded-full border border-border bg-surface-2/60 px-2 py-0.5 text-[10.5px] text-muted"
+              >
+                {c}
+              </span>
+            ))}
+          </div>
+        </div>
+        <span className="shrink-0 text-[11px] text-muted">{open ? '접기' : '펼치기'}</span>
+        <ChevronIcon
+          className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          width={14}
+          height={14}
+        />
+      </button>
+      {!open && (
+        <p className="border-t border-border px-4 py-2.5 text-[11.5px] leading-relaxed text-muted">
+          테스트 <b className="text-text/80">결과</b>가 아니라 테스트{' '}
+          <b className="text-text/80">스위트 자체</b>의 품질을 검증합니다 — 깨진 테스트 AI 수정,
+          알맹이 없는 테스트 색출(네거티브), 불안정 테스트 감지(flaky), 결함 검출력 측정(mutation).
+        </p>
+      )}
+      {open && (
+        <div className="grid gap-4 border-t border-border p-4 lg:grid-cols-2">
+          <SelfHealing report={report} track={track} />
+          <NegativeControlBlock scope={track} />
+          <FlakyBlock scope={track} />
+          <MutationScoreBlock />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ReportView({ report }: { report: RunReport }): JSX.Element {
   const [track, setTrack] = useState<'all' | 'scope' | 'code'>('all')
   const [detailOpen, setDetailOpen] = useState(false)
@@ -531,11 +592,8 @@ function ReportView({ report }: { report: RunReport }): JSX.Element {
         </div>
       )}
 
-      {/* 품질 검증 도구 */}
-      <SelfHealing report={report} track={track} />
-      <NegativeControlBlock scope={track} />
-      <FlakyBlock scope={track} />
-      <MutationScoreBlock />
+      {/* 품질 검증 도구 (보조·고급 — 라벨+칩으로 발견성 확보, 접이식 2열) */}
+      <QualityToolsSection report={report} track={track} />
 
       {/* ── 접이식: 상세 실행 결과 + 선택 실행/힐링 (추적성이 주 뷰라 접어둠) ── */}
       <div className="rounded-xl border border-border bg-surface">
