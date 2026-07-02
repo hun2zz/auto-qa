@@ -1,6 +1,29 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { ChevronIcon, CloseIcon } from './icons'
 
+/**
+ * 인포 툴팁 — ⓘ 아이콘에 마우스를 올리면 설명 팝오버가 뜬다.
+ * 헷갈리기 쉬운 기능(품질 도구 등) 제목 옆에 붙여 "뭘 하는지/언제 쓰는지"를 안내.
+ */
+export function InfoTip({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <span className="group relative inline-flex align-middle">
+      <span
+        className="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-surface-2 text-[10px] font-semibold text-muted ring-1 ring-border group-hover:text-text"
+        aria-hidden
+      >
+        i
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 hidden w-[320px] rounded-lg border border-border bg-surface-2 p-3 text-left text-[11.5px] font-normal leading-relaxed text-text shadow-xl group-hover:block"
+      >
+        {children}
+      </span>
+    </span>
+  )
+}
+
 /** 오버레이 모달 — 온디맨드 결과/도구를 레이아웃 흔들지 않고 띄운다. */
 export function Modal({
   open,

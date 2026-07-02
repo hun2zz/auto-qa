@@ -4,7 +4,7 @@ import { useStore } from '../store'
 
 const SCOPE_LABEL: Record<TestScope, string> = { all: '전체', scope: '개발범위', code: '코드' }
 import { Button } from './Button'
-import { PanelHeader, PanelBody, EmptyState, Badge } from './common'
+import { PanelHeader, PanelBody, EmptyState, Badge, InfoTip } from './common'
 import { PlayIcon, AlertIcon, ChevronIcon, SparkleIcon } from './icons'
 import { TraceabilitySection } from './TraceabilityPanel'
 
@@ -113,9 +113,16 @@ function NegativeControlBlock({ scope }: { scope: TestScope }): JSX.Element {
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-text">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
             기대값 변형 검증 (negative-control)
-            <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
+            <InfoTip>
+              <b>이 테스트가 진짜 검증하는지</b> 확인합니다. 통과한 테스트의 기대값을 일부러 틀리게 바꿔
+              다시 돌려요. <b className="text-ok">빨개지면</b> 진짜 검증하는 테스트, <b className="text-bad">그대로 통과</b>하면
+              알맹이 없는 가짜 테스트(vacuous)예요.
+              <br />
+              <span className="text-muted">언제: 테스트를 믿어도 되는지 점검할 때. 무거움 · 끝나면 원본 자동 복원 · AI 안 씀.</span>
+            </InfoTip>
+            <span className="ml-1 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
               대상: {SCOPE_LABEL[scope]}
             </span>
           </h3>
@@ -163,9 +170,15 @@ function FlakyBlock({ scope }: { scope: TestScope }): JSX.Element {
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-text">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
             Flaky(불안정) 감지
-            <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
+            <InfoTip>
+              같은 코드로 각 테스트를 <b>N회 반복 실행</b>해, 통과/실패가 <b>들쭉날쭉한</b> 테스트를 찾습니다.
+              랜덤하게 깨지는 테스트가 있으면 결과를 믿을 수 없으니 미리 색출 → &lsquo;결정적 판정&rsquo;의 신뢰를 지켜요.
+              <br />
+              <span className="text-muted">언제: CI에 넣기 전, 테스트가 매번 같은 결과인지 확인할 때. 무거움 · 재시도 0 · AI 안 씀.</span>
+            </InfoTip>
+            <span className="ml-1 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
               대상: {SCOPE_LABEL[scope]}
             </span>
           </h3>
@@ -236,7 +249,16 @@ function MutationScoreBlock(): JSX.Element {
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-text">Mutation score (스위트 강도)</h3>
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
+            Mutation score (스위트 강도)
+            <InfoTip>
+              <b>테스트가 진짜 버그를 잡는지</b> 잽니다. 소스에 작은 결함(mutant)을 일부러 심고, 테스트가
+              그걸 잡는 비율을 계산해요. <b className="text-bad">살아남은 mutant</b> = 아무 테스트도 못 잡는 검증 구멍.
+              커버리지(코드를 밟았나)보다 <b>결함검출력을 잘 예측</b>하는 지표예요.
+              <br />
+              <span className="text-muted">언제: 테스트 스위트가 얼마나 튼튼한지 볼 때. 무거움 · src/lib·api 대상 · 소스 자동 복원 · AI 안 씀.</span>
+            </InfoTip>
+          </h3>
           <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
             소스 로직(src/lib·api)에 작은 결함(mutant)을 심고 스위트가 잡는 비율을 잰다. 커버리지(밟았나)보다
             결함검출력을 잘 예측. <b className="text-text/80">살아남은 mutant = 아무 테스트도 안 잡는 검증 구멍.</b>
@@ -317,6 +339,13 @@ function SelfHealing({ report, track }: { report: RunReport; track: TestScope })
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
             <SparkleIcon width={15} height={15} className="text-brand-soft" />
             AI 자동 수정 (self-healing)
+            <InfoTip>
+              실패한 테스트를 AI가 보고 <b>왜 깨졌는지 분류</b>합니다. 화면이 조금 바뀌어(셀렉터/텍스트 변경)
+              깨진 <b>&lsquo;드리프트&rsquo;면 고쳐서 다시 돌리고</b>, 진짜 코드 버그(회귀)면 <b className="text-bad">안 고치고 그대로 표시</b>해요
+              (초록으로 세탁 안 함).
+              <br />
+              <span className="text-muted">언제: UI가 조금 바뀌어 깨진 테스트를 자동 복구할 때. AI는 &lsquo;분류·수정&rsquo;만, 통과 판정은 기계가.</span>
+            </InfoTip>
             <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-normal text-muted">
               대상: {SCOPE_LABEL[track]}
             </span>
