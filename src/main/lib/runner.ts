@@ -70,6 +70,7 @@ async function restoreMutationBackups(projectPath: string): Promise<number> {
       /* 개별 실패는 무시하고 나머지 계속 */
     }
   }
+  await fs.rmdir(dir).catch(() => {}) // 비었으면 빈 폴더도 정리
   return n
 }
 

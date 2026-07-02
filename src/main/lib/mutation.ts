@@ -144,5 +144,6 @@ export async function restoreMutationSources(projectPath: string): Promise<numbe
     }
   }
   await fs.rm(mp, { force: true }).catch(() => {})
+  await fs.rmdir(bakDir(projectPath)).catch(() => {}) // 비었으면 빈 폴더도 정리
   return n
 }
